@@ -29,14 +29,8 @@ public struct EngineState: Equatable, Sendable {
         }
     }
 
-    /// "1450 F", "1200 R", "750 N", or "1450" without gear data.
+    /// RPM only, "1450". The band shows the gear: up ahead, down astern, no bar in neutral.
     public var text: String {
-        let value = String(format: "%.0f", rpm)
-        switch gear {
-        case .forward: return value + " F"
-        case .reverse: return value + " R"
-        case .neutral: return value + " N"
-        case nil: return value
-        }
+        String(format: "%.0f", rpm)
     }
 }

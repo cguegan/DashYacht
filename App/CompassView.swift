@@ -180,12 +180,10 @@ struct CompassView: View {
         .animation(Self.motion, value: requestHertz)
     }
 
-    /// "RUDDER 21° S", "ROT 04°/MIN P", or "RUDDER 00°  " at zero. Always the same length (the font is
-    /// monospaced), so the centred text does not jump when the value changes.
+    /// "RUDDER 21°" or "ROT 04°/MIN". No side letter: the bar colour and direction show the side.
+    /// Two digits always (the font is monospaced), so the centred text does not jump when the value changes.
     private static func sideLabel(_ name: String, _ value: Double, unit: String) -> String {
-        let rounded = Int(abs(value).rounded())
-        let side = rounded == 0 ? " " : value < 0 ? "P" : "S"
-        return "\(name) \(String(format: "%02d", rounded))\(unit) \(side)"
+        "\(name) \(String(format: "%02d", Int(abs(value).rounded())))\(unit)"
     }
     private static let ranges: [Double] = [0.5, 1, 2, 4, 8, 16, 32]
 }
