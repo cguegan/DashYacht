@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Test packages
+        run: swift test --package-path Packages/DashYachtKit
+
+      # Packages must stay platform-neutral so an iPad/iPhone app can reuse them later.
+      - name: Build packages for iOS
+        working-directory: Packages/DashYachtKit
+        run: xcodebuild -scheme DashYachtKit-Package -destination 'generic/platform=iOS' build
+
+      - name: Build macOS app
+        run: xcodebuild -project DashYacht.xcodeproj -scheme DashYacht -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
