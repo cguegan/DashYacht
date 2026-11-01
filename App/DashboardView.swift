@@ -124,7 +124,9 @@ struct InstrumentCard: View {
         .padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            Self.shape.stroke(palette.cardBorder, lineWidth: 1)
+            // Faint fill and half-transparent border: the cards stay quiet next to the compass.
+            Self.shape.fill(.primary.opacity(0.05))
+            Self.shape.stroke(palette.cardBorder.opacity(0.5), lineWidth: 1)
         }
     }
 
@@ -183,7 +185,7 @@ struct ValueReadout: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 2) {
             Text(text)
-                .font(.system(size: 29, weight: .medium).width(.condensed))
+                .font(.system(size: 36, weight: .medium).width(.condensed))
                 .tracking(1.5)
                 .monospacedDigit()
                 .lineLimit(1)
