@@ -117,6 +117,9 @@ struct CompassView: View {
             .overlay {
                 AISLayer(scene: scene, rotation: cardRotation + trueOffset)
             }
+            .overlay {
+                HeadingBox(heading: heading)
+            }
             .padding(24)
         }
         // The window has no title bar, so the connection status is here. A click opens the data source.
@@ -259,7 +262,7 @@ struct CompassDial: View, Animatable {
             }
 
             drawBoat(context, dial)
-            drawHeadingBox(context, dial, palette)
+            drawLubber(context, dial, palette)
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityElement()
@@ -374,8 +377,8 @@ struct CompassDial: View, Animatable {
         context.stroke(hull, with: .color(.primary), lineWidth: 1.5)
     }
 
-    /// Fixed lubber line and heading value at the top.
-    private func drawHeadingBox(_ context: GraphicsContext, _ dial: DialGeometry, _ palette: HUDPalette) {
+    /// Fixed lubber line at the top: the bow.
+    private func drawLubber(_ context: GraphicsContext, _ dial: DialGeometry, _ palette: HUDPalette) {
         let r = dial.radius
         let accent = GraphicsContext.Shading.color(palette.accent)
 
@@ -386,38 +389,6 @@ struct CompassDial: View, Animatable {
         lubber.addLine(to: CGPoint(x: top.x + r * 0.04, y: top.y - r * 0.07))
         lubber.closeSubpath()
         context.fill(lubber, with: accent)
-
-        let box = dial.headingBox
-        // Filled, so the course line and wind pointer under it do not cross the digits.
-        let fill: GraphicsContext.Shading = isNightVision ? .color(.black)
-            : palette.background.map { .color($0) } ?? .style(.background)
-        context.fill(Path(box), with: fill)
-        // Text colour: black in light mode, and still visible on the dark backgrounds.
-        context.stroke(Path(box), with: .color(.primary), lineWidth: 1.5)
-
-        let value: String
-        if let heading, let number = heading.sample.value.number {
-            value = Format.bearing(number) + "°" + (heading.path.hasSuffix("Magnetic") ? "M" : "T")
-        } else {
-            value = "---"
-        }
-        let text = context.resolve(
-            Text(value)
-                .font(.system(size: r * 0.11, weight: .medium, design: .monospaced))
-                .foregroundStyle(heading?.isLive == true ? .primary : .secondary)
-        )
-        context.draw(text, at: CGPoint(x: box.midX, y: box.midY))
-
-        let label = context.resolve(
-            Text(heading == nil ? "NO DATA" : heading?.isLive == true ? "HDG" : "HDG  OLD")
-                .font(.system(size: r * 0.05, weight: .semibold, design: .monospaced))
-                .foregroundStyle(heading?.isLive == true ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-        )
-        let labelSize = label.measure(in: CGSize(width: r, height: r))
-        let labelRect = CGRect(x: box.midX - labelSize.width / 2 - 3, y: box.maxY + r * 0.02,
-                               width: labelSize.width + 6, height: labelSize.height)
-        context.fill(Path(labelRect), with: fill)
-        context.draw(label, in: labelRect.insetBy(dx: 3, dy: 0))
     }
 
     private var accessibilityText: String {
@@ -454,5 +425,54 @@ struct DialGeometry {
                 path.addLine(to: point(angle, r))
             }
         }
+    }
+}
+
+/// Heading value box in the centre, below the boat. No label: grey digits and the dimmed card show
+/// an old heading, and "---" a missing one. Its own layer, above the AIS targets,
+/// so a target never hides the heading.
+struct HeadingBox: View {
+    let heading: Reading?
+
+    var body: some View {
+        // Frosted glass: what is under the box (coast, course line, AIS targets) is blurred, so the digits
+        // stay readable but the picture is not cut. A Canvas cannot blur, so the material is a view behind it.
+        GeometryReader { geometry in
+            let box = DialGeometry(size: geometry.size).headingBox
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                // The thinnest material is still too opaque here: partly transparent, it lets the picture through.
+                .opacity(0.65)
+                .frame(width: box.width, height: box.height)
+                .position(x: box.midX, y: box.midY)
+        }
+        .overlay { digits }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var digits: some View {
+        Canvas { context, size in
+            let dial = DialGeometry(size: size)
+            let r = dial.radius
+            let box = dial.headingBox
+            // Text colour: black in light mode, and still visible on the dark backgrounds.
+            context.stroke(Path(box), with: .color(.primary), lineWidth: 1.5)
+
+            let value: String
+            if let heading, let number = heading.sample.value.number {
+                value = Format.bearing(number) + "°" + (heading.path.hasSuffix("Magnetic") ? "M" : "T")
+            } else {
+                value = "---"
+            }
+            let text = context.resolve(
+                Text(value)
+                    .font(.system(size: r * 0.11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(heading?.isLive == true ? .primary : .secondary)
+            )
+            context.draw(text, at: CGPoint(x: box.midX, y: box.midY))
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
