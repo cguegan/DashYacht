@@ -9,6 +9,13 @@ struct HUDPalette {
     var port: Color
     var starboard: Color
     var ais: Color
+    /// Behind the dashboard. `nil` keeps the window background.
+    var background: Color?
+    var cardBorder: Color
+    /// Settings dot of a card with a live value.
+    var cardDot: Color
+    /// Line between a card column and the compass.
+    var separator: Color
 
     init(colorScheme: ColorScheme, isNightVision: Bool) {
         if isNightVision {
@@ -18,6 +25,10 @@ struct HUDPalette {
             port = .primary
             starboard = .primary
             ais = .primary
+            background = nil
+            cardBorder = .secondary.opacity(0.6)
+            cardDot = .secondary.opacity(0.35)
+            separator = .secondary.opacity(0.4)
         } else if colorScheme == .dark {
             accent = .cyan
             course = Color(red: 1, green: 0.3, blue: 1)
@@ -25,6 +36,10 @@ struct HUDPalette {
             port = .red
             starboard = .green
             ais = .green
+            background = Color(red: 0x02 / 255, green: 0x19 / 255, blue: 0x1F / 255)
+            cardBorder = Color(red: 0x94 / 255, green: 0x9A / 255, blue: 0x9D / 255)
+            cardDot = Color(red: 0x21 / 255, green: 0x34 / 255, blue: 0x38 / 255)
+            separator = Color(red: 0x62 / 255, green: 0x6E / 255, blue: 0x71 / 255)
         } else {
             accent = .blue
             course = .purple
@@ -32,36 +47,10 @@ struct HUDPalette {
             port = .red
             starboard = .green
             ais = Color(red: 0, green: 0.6, blue: 0)
-        }
-    }
-}
-
-/// Rectangle with the top-right corner cut, used for instrument cards.
-struct ChamferedRectangle: Shape {
-    var chamfer: CGFloat = 14
-
-    func path(in rect: CGRect) -> Path {
-        Path { path in
-            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX - chamfer, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + chamfer))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-            path.closeSubpath()
-        }
-    }
-}
-
-/// Small triangle that fills the cut corner of a `ChamferedRectangle`.
-struct CornerMark: Shape {
-    var size: CGFloat = 10
-
-    func path(in rect: CGRect) -> Path {
-        Path { path in
-            path.move(to: CGPoint(x: rect.maxX - size, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + size))
-            path.closeSubpath()
+            background = nil
+            cardBorder = .secondary.opacity(0.6)
+            cardDot = .secondary.opacity(0.35)
+            separator = .secondary.opacity(0.4)
         }
     }
 }

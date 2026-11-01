@@ -39,6 +39,9 @@ public final class DataStore {
     public static let aisLostAge: TimeInterval = 600
 
     public private(set) var samples: [String: Sample] = [:]
+    /// The last value of each source, by path and then by source reference ("" when the source is unknown).
+    /// Used when the user picks one source for an instrument, for example one of two speed logs.
+    public private(set) var samplesBySource: [String: [String: Sample]] = [:]
     /// Context of the own vessel, from the server hello message.
     public private(set) var selfContext: String?
     /// Values of other vessels (AIS), by context. Kept apart, so they never replace own values.
@@ -54,7 +57,9 @@ public final class DataStore {
             if isSelf(delta.context) {
                 for update in delta.updates {
                     for item in update.values where !item.path.isEmpty {
-                        samples[item.path] = Sample(value: item.value, sourceRef: update.sourceRef, receivedAt: receivedAt)
+                        let sample = Sample(value: item.value, sourceRef: update.sourceRef, receivedAt: receivedAt)
+                        samples[item.path] = sample
+                        samplesBySource[item.path, default: [:]][update.sourceRef ?? ""] = sample
                     }
                 }
             } else if let context = delta.context, context.hasPrefix("vessels.") {
@@ -80,6 +85,7 @@ public final class DataStore {
     /// Removes all values, for example when the user changes the data source.
     public func reset() {
         samples = [:]
+        samplesBySource = [:]
         selfContext = nil
         otherVessels = [:]
     }
@@ -89,16 +95,34 @@ public final class DataStore {
     ///
     /// A path can contain `*` for one segment, for example `electrical.batteries.*.voltage`.
     public func reading(_ paths: [String], now: Date, maxAge: TimeInterval = defaultMaxAge) -> Reading? {
-        let readings = paths.flatMap(expand).compactMap { path -> Reading? in
-            guard let sample = samples[path] else { return nil }
-            let age = now.timeIntervalSince(sample.receivedAt)
-            return Reading(path: path, sample: sample, freshness: age > maxAge ? .stale(age: age) : .live)
+        let readings = paths.flatMap(expand).compactMap { path in
+            samples[path].map { Self.reading(path, $0, now: now, maxAge: maxAge) }
         }
         return readings.first(where: \.isLive) ?? readings.max { $0.sample.receivedAt < $1.sample.receivedAt }
     }
 
     public func reading(_ path: String, now: Date, maxAge: TimeInterval = defaultMaxAge) -> Reading? {
         reading([path], now: now, maxAge: maxAge)
+    }
+
+    /// The value of one source only, even when another source sends the same path.
+    public func reading(_ selection: SourceSelection, now: Date, maxAge: TimeInterval = defaultMaxAge) -> Reading? {
+        samplesBySource[selection.path]?[selection.sourceRef ?? ""]
+            .map { Self.reading(selection.path, $0, now: now, maxAge: maxAge) }
+    }
+
+    /// Every path and source received for `paths` (wildcards expanded), for the user to choose from.
+    public func sources(for paths: [String]) -> [SourceSelection] {
+        paths.flatMap(expand).flatMap { path in
+            (samplesBySource[path] ?? [:]).keys.sorted().map {
+                SourceSelection(path: path, sourceRef: $0.isEmpty ? nil : $0)
+            }
+        }
+    }
+
+    private static func reading(_ path: String, _ sample: Sample, now: Date, maxAge: TimeInterval) -> Reading {
+        let age = now.timeIntervalSince(sample.receivedAt)
+        return Reading(path: path, sample: sample, freshness: age > maxAge ? .stale(age: age) : .live)
     }
 
     /// AIS targets with a position received less than `aisLostAge` ago.

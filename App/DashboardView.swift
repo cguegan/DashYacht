@@ -2,187 +2,146 @@ import BoatData
 import SignalK
 import SwiftUI
 
-/// One instrument on the dashboard: which paths to read and how to show the value.
-struct InstrumentSpec: Identifiable, Sendable {
-    struct Display: Sendable {
-        var value: String
-        var unit: String
-        var unitColor: Color? = nil
-        var detail: String? = nil
-    }
-
-    let title: String
-    /// Alternatives in order of preference. The first live one is used.
-    let paths: [String]
-    let display: @Sendable (Reading) -> Display?
-    var id: String { title }
-}
-
-extension InstrumentSpec {
-    /// Fixed for now. Editable dashboards come in phase 2.
-    static let leftPanel: [InstrumentSpec] = [
-        InstrumentSpec(title: "SOG", paths: ["navigation.speedOverGround"]) { reading in
-            reading.sample.value.number.map { .init(value: Format.knots($0), unit: "kn") }
-        },
-        InstrumentSpec(title: "STW", paths: ["navigation.speedThroughWater"]) { reading in
-            reading.sample.value.number.map { .init(value: Format.knots($0), unit: "kn") }
-        },
-        InstrumentSpec(title: "COG", paths: ["navigation.courseOverGroundTrue", "navigation.courseOverGroundMagnetic"]) { reading in
-            reading.sample.value.number.map {
-                .init(value: Format.bearing($0) + "°", unit: reading.path.hasSuffix("Magnetic") ? "M" : "T")
-            }
-        },
-        InstrumentSpec(title: "Heading", paths: ["navigation.headingTrue", "navigation.headingMagnetic"]) { reading in
-            reading.sample.value.number.map {
-                .init(value: Format.bearing($0) + "°", unit: reading.path.hasSuffix("Magnetic") ? "M" : "T")
-            }
-        },
-        InstrumentSpec(title: "Depth", paths: [
-            "environment.depth.belowKeel", "environment.depth.belowTransducer", "environment.depth.belowSurface",
-        ]) { reading in
-            reading.sample.value.number.map {
-                .init(value: Format.metres($0), unit: "m", detail: depthReference(reading.path))
-            }
-        },
-        InstrumentSpec(title: "Position", paths: ["navigation.position"]) { reading in
-            guard let lat = reading.sample.value["latitude"]?.number,
-                  let lon = reading.sample.value["longitude"]?.number else { return nil }
-            return .init(value: Format.latitude(lat) + "\n" + Format.longitude(lon), unit: "")
-        },
-    ]
-
-    static let rightPanel: [InstrumentSpec] = [
-        InstrumentSpec(title: "AWA", paths: ["environment.wind.angleApparent"]) { reading in
-            reading.sample.value.number.map(windAngle)
-        },
-        InstrumentSpec(title: "AWS", paths: ["environment.wind.speedApparent"]) { reading in
-            reading.sample.value.number.map { .init(value: Format.knots($0), unit: "kn") }
-        },
-        InstrumentSpec(title: "TWA", paths: ["environment.wind.angleTrueWater"]) { reading in
-            reading.sample.value.number.map(windAngle)
-        },
-        InstrumentSpec(title: "TWS", paths: ["environment.wind.speedTrue"]) { reading in
-            reading.sample.value.number.map { .init(value: Format.knots($0), unit: "kn") }
-        },
-        InstrumentSpec(title: "Water", paths: ["environment.water.temperature"]) { reading in
-            reading.sample.value.number.map { .init(value: Format.celsius($0), unit: "°C") }
-        },
-        InstrumentSpec(title: "Battery", paths: ["electrical.batteries.*.voltage"]) { reading in
-            reading.sample.value.number.map {
-                .init(value: Format.volts($0), unit: "V", detail: "Battery " + reading.path.split(separator: ".")[2])
-            }
-        },
-    ]
-
-    private static func windAngle(_ radians: Double) -> Display {
-        let angle = Format.windAngle(radians)
-        return angle.side == .port
-            ? .init(value: angle.degrees + "°", unit: "Port", unitColor: .red)
-            : .init(value: angle.degrees + "°", unit: "Stbd", unitColor: .green)
-    }
-
-    private static func depthReference(_ path: String) -> String {
-        switch path.split(separator: ".").last {
-        case "belowKeel": "Below keel"
-        case "belowTransducer": "Below transducer"
-        default: "Below surface"
-        }
-    }
-}
-
 /// Three columns: instrument cards on each side, compass in the centre.
 struct DashboardView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.isNightVision) private var isNightVision
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
+        @Bindable var layout = model.layout
         // Fixed proportions: 16% cards, 68% compass, 16% cards.
         GeometryReader { geometry in
             let side = geometry.size.width * 0.16
             HStack(spacing: 0) {
-                InstrumentColumn(specs: InstrumentSpec.leftPanel)
+                InstrumentColumn(cards: $layout.left, separatorEdge: .trailing)
                     .frame(width: side)
                 CompassView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                InstrumentColumn(specs: InstrumentSpec.rightPanel)
+                    .background(GridBackground())
+                InstrumentColumn(cards: $layout.right, separatorEdge: .leading)
                     .frame(width: side)
             }
         }
-        .background(GridBackground())
+        .background(HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision).background)
     }
 }
 
 struct InstrumentColumn: View {
     @Environment(AppModel.self) private var model
-    let specs: [InstrumentSpec]
+    @Binding var cards: [CardSettings]
+    /// Side of the column that faces the compass.
+    let separatorEdge: HorizontalEdge
+    @Environment(\.isNightVision) private var isNightVision
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         // Redraw every second even without new data, so values turn stale on time.
         TimelineView(.periodic(from: .now, by: 1)) { context in
             ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(specs) { spec in
-                        InstrumentTile(spec: spec, reading: model.store.reading(spec.paths, now: context.date))
+                VStack(spacing: 13.5) {
+                    ForEach($cards) { $card in
+                        InstrumentCard(settings: $card, reading: reading(for: card, now: context.date))
                     }
                 }
-                .padding(12)
+                .padding(14)
             }
+        }
+        .overlay(alignment: separatorEdge == .leading ? .leading : .trailing) {
+            HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision).separator
+                .frame(width: 0.5)
+        }
+    }
+
+    private func reading(for card: CardSettings, now: Date) -> Reading? {
+        if let source = card.source {
+            model.store.reading(source, now: now)
+        } else {
+            model.store.reading(card.instrument.paths, now: now)
         }
     }
 }
 
-struct InstrumentTile: View {
-    let spec: InstrumentSpec
+/// One card: title and settings dot at the top, the value in the middle, the reference or source at the bottom.
+struct InstrumentCard: View {
+    @Binding var settings: CardSettings
     let reading: Reading?
+    @State private var showsSettings = false
     @Environment(\.isNightVision) private var isNightVision
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let display = reading.flatMap(spec.display)
-        let isLive = reading?.isLive == true && display != nil
+        let value = reading.flatMap { settings.instrument.value(of: $0, unit: settings.unit) }
+        let isLive = reading?.isLive == true && value != nil
         let palette = HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision)
+        let isPosition = value != nil && settings.instrument == .position
 
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(spec.title.uppercased())
-                    .font(.system(.caption, design: .monospaced, weight: .semibold))
-                    .tracking(2)
-                    .foregroundStyle(.secondary)
-                Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(settings.instrument.title.uppercased())
+                    .font(.system(size: 10, weight: .medium))
+                    .tracking(2.5)
+                Spacer(minLength: 0)
                 if let status = statusText {
                     Text(status)
-                        .font(.system(.caption2, design: .monospaced, weight: .bold))
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1)
                         .foregroundStyle(.orange)
-                        .padding(.trailing, 10)
                 }
+                settingsDot(isLive: isLive, palette: palette)
             }
-            Spacer(minLength: 0)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(display?.value ?? "—")
-                    .font(.system(size: isMultiline(display) ? 24 : 46, weight: .light))
-                    .monospacedDigit()
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.5)
-                if let display, !display.unit.isEmpty {
-                    Text(display.unit.uppercased())
-                        .font(.system(.callout, design: .monospaced, weight: .medium))
-                        .foregroundStyle(isLive && !isNightVision ? (display.unitColor ?? .secondary) : .secondary)
+            Group {
+                if let value, isPosition {
+                    PositionReadout(lines: value.lines)
+                } else {
+                    ValueReadout(text: value?.lines.first ?? "—", unit: value?.unit ?? "",
+                                 unitColor: unitColor(value, isLive: isLive))
                 }
             }
             .foregroundStyle(isLive ? .primary : .tertiary)
-            Text((display?.detail ?? " ").uppercased())
-                .font(.system(.caption2, design: .monospaced))
-                .tracking(1)
+            // Value centred; position right-aligned, so the hemispheres line up with the card edge.
+            .frame(maxWidth: .infinity, alignment: isPosition ? .trailing : .center)
+            .padding(.trailing, isPosition ? 2 : 0)
+            .padding(.top, -2.5)
+            Text((value?.detail ?? sourceText ?? " ").uppercased())
+                .font(.system(size: 10, weight: .medium))
+                .tracking(2.5)
+                .lineLimit(1)
                 .foregroundStyle(.secondary)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+        .padding(.leading, 14)
+        .padding(.trailing, 11)
+        .padding(.top, 5)
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            ChamferedRectangle()
-                .fill(.background.secondary.opacity(0.7))
-            ChamferedRectangle()
-                .stroke(.secondary.opacity(0.6), lineWidth: 1)
-            CornerMark()
-                .fill(isLive ? palette.accent : .orange)
+            Self.shape.stroke(palette.cardBorder, lineWidth: 1)
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    /// Rounded except the top-right corner, where the settings dot is.
+    private static let shape = UnevenRoundedRectangle(topLeadingRadius: 14, bottomLeadingRadius: 14,
+                                                      bottomTrailingRadius: 14, topTrailingRadius: 0,
+                                                      style: .continuous)
+
+    /// Opens the settings of the card. Orange when the value is missing or old.
+    private func settingsDot(isLive: Bool, palette: HUDPalette) -> some View {
+        Button {
+            showsSettings = true
+        } label: {
+            Circle()
+                .fill(isLive ? palette.cardDot : .orange)
+                .frame(width: 13, height: 13)
+                .padding(2)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Card settings")
+        .accessibilityLabel("Settings of \(settings.instrument.name)")
+        .popover(isPresented: $showsSettings, arrowEdge: .trailing) {
+            CardSettingsView(settings: $settings)
+                .appAppearance()
+        }
     }
 
     private var statusText: String? {
@@ -193,7 +152,102 @@ struct InstrumentTile: View {
         return nil
     }
 
-    private func isMultiline(_ display: InstrumentSpec.Display?) -> Bool {
-        display?.value.contains("\n") == true
+    private var sourceText: String? {
+        reading?.sample.sourceRef.map { "Source \($0)" }
+    }
+
+    private func unitColor(_ value: InstrumentValue?, isLive: Bool) -> Color? {
+        // Night vision keeps only red: green would turn black, so the side is told by the text alone.
+        guard isLive, !isNightVision, let side = value?.side else { return nil }
+        let palette = HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision)
+        return side == .port ? palette.port : palette.starboard
+    }
+}
+
+/// A number with its unit after it, for speeds, angles, depth, temperature and voltage.
+struct ValueReadout: View {
+    let text: String
+    let unit: String
+    /// `nil` uses the secondary colour.
+    var unitColor: Color?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+            Text(text)
+                .font(.system(size: 29, weight: .medium).width(.condensed))
+                .tracking(1.5)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            if !unit.isEmpty {
+                Text(unit.uppercased())
+                    .font(.system(size: 8, weight: .medium))
+                    .tracking(1.5)
+                    .foregroundStyle(unitColor.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+            }
+        }
+    }
+}
+
+/// Latitude above longitude, right-aligned so the hemispheres line up.
+struct PositionReadout: View {
+    let lines: [String]
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: -2.5) {
+            ForEach(lines, id: \.self) { line in
+                Text(line)
+                    .font(.system(size: 29, weight: .medium).width(.condensed))
+                    .tracking(1.5)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+            }
+        }
+    }
+}
+
+/// Popover of the settings dot: instrument, source and unit of one card.
+struct CardSettingsView: View {
+    @Binding var settings: CardSettings
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Form {
+            Picker("Instrument", selection: Binding(get: { settings.instrument }, set: { settings.change(to: $0) })) {
+                ForEach(Instrument.allCases, id: \.self) { instrument in
+                    Text(instrument.name).tag(instrument)
+                }
+            }
+            Picker("Source", selection: $settings.source) {
+                Text("Automatic").tag(SourceSelection?.none)
+                ForEach(sourceChoices, id: \.self) { source in
+                    Text(label(source)).tag(Optional(source))
+                }
+            }
+            if let defaultUnit = settings.instrument.units.first {
+                Picker("Unit", selection: Binding(get: { settings.unit ?? defaultUnit }, set: { settings.unit = $0 })) {
+                    ForEach(settings.instrument.units, id: \.self) { unit in
+                        Text(unit.name).tag(unit)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 420)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Sources received now, plus the chosen one if it has stopped sending (so the choice stays visible).
+    private var sourceChoices: [SourceSelection] {
+        let received = model.store.sources(for: settings.instrument.paths)
+        guard let chosen = settings.source, !received.contains(chosen) else { return received }
+        return received + [chosen]
+    }
+
+    private func label(_ source: SourceSelection) -> String {
+        let name = source.sourceRef.map { "Source \($0)" } ?? "Unknown source"
+        let missing = model.store.sources(for: [source.path]).contains(source) ? "" : " (no data)"
+        return "\(name) · \(source.path)\(missing)"
     }
 }

@@ -22,6 +22,7 @@ enum DataSourceChoice: Equatable {
 @Observable
 final class AppModel {
     let store = DataStore()
+    let layout = DashboardLayout()
     private(set) var source: DataSourceChoice?
     private(set) var status: SourceStatus?
     private var task: Task<Void, Never>?
