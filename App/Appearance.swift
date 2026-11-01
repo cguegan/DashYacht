@@ -80,7 +80,7 @@ struct AppearancePicker: View {
     }
 }
 
-/// Light, dark and night vision buttons, at the top of the right panel. The selected one is highlighted.
+/// Light, dark and night vision buttons, at the bottom of the right panel. The selected one is highlighted.
 /// "System" is only in the View menu: when it is chosen, no button is highlighted.
 struct AppearanceButtons: View {
     @AppStorage(AppearanceMode.storageKey) private var mode: AppearanceMode = .system

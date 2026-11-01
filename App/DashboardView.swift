@@ -33,7 +33,7 @@ struct InstrumentColumn: View {
     @Binding var cards: [CardSettings]
     /// Side of the column that faces the compass.
     let separatorEdge: HorizontalEdge
-    /// Shows the light, dark and night buttons above the cards.
+    /// Shows the light, dark and night buttons at the bottom of the column.
     var showsAppearanceButtons = false
     @Environment(\.isNightVision) private var isNightVision
     @Environment(\.colorScheme) private var colorScheme
@@ -42,10 +42,6 @@ struct InstrumentColumn: View {
         // Redraw every second even without new data, so values turn stale on time.
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(spacing: 0) {
-                if showsAppearanceButtons {
-                    AppearanceButtons()
-                        .padding([.horizontal, .top], 14)
-                }
                 ScrollView {
                     VStack(spacing: 13.5) {
                         ForEach($cards) { $card in
@@ -53,6 +49,11 @@ struct InstrumentColumn: View {
                         }
                     }
                     .padding(14)
+                }
+                // The scroll view takes the free height, so the buttons stay at the bottom.
+                if showsAppearanceButtons {
+                    AppearanceButtons()
+                        .padding([.horizontal, .bottom], 14)
                 }
             }
         }
