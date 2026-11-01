@@ -75,7 +75,8 @@ struct CompassView: View {
                     scale: 60,
                     label: rateOfTurn == nil ? "ROT ---" : Self.sideLabel("ROT", degreesPerMinute, unit: "°/MIN")
                 )
-                .animation(.linear(duration: 0.2), value: rateOfTurn?.sample.value.number)
+                // Same 1 s spring as the compass card, so the band moves with the heading.
+                .animation(Self.motion, value: rateOfTurn?.sample.value.number)
             }
             .overlay {
                 let scene = AISScene(store: store, now: context.date, rangeMetres: rangeNM * 1852)
