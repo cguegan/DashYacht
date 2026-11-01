@@ -2,8 +2,10 @@ import BoatData
 import SwiftUI
 
 /// Band around the compass for a signed value: rudder angle at the bottom, rate of turn at the top,
-/// engine RPM on each side. Centre is 0; starboard on the right, or ahead at the top for the side bands. The coloured bar fills continuously from the centre to the exact value.
-/// `Animatable`, so SwiftUI moves the bar smoothly between two values.
+/// engine RPM on each side. Centre is 0; starboard on the right, or ahead at the top for the side bands.
+/// The coloured bar fills continuously from the centre to the exact value. The triangle shows the value,
+/// or a separate requested value (for the rudder: the angle asked by the autopilot).
+/// `Animatable`, so SwiftUI moves the bar and the triangle smoothly between two values.
 struct BandGauge: View, Animatable {
     enum Placement {
         /// Rudder angle. The value is written under the band.
@@ -29,9 +31,25 @@ struct BandGauge: View, Animatable {
     /// Bar colours below and above 0. `nil` uses port and starboard colours.
     var colors: (negative: Color, positive: Color)? = nil
 
-    nonisolated var animatableData: Double {
-        get { value }
-        set { value = newValue }
+    enum Pointer {
+        /// The triangle is at the value, at the end of the bar.
+        case atValue
+        /// The triangle is at `target`, a requested value. The bar shows what is really there.
+        case atTarget
+        /// No triangle, for example when no request is being sent.
+        case hidden
+    }
+
+    var pointer = Pointer.atValue
+    /// Requested value, used with `.atTarget`. Same unit and sign as `value`.
+    var target = 0.0
+
+    nonisolated var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(value, target) }
+        set {
+            value = newValue.first
+            target = newValue.second
+        }
     }
 
     /// Half of the band, in compass degrees on each side of its centre.
@@ -69,9 +87,14 @@ struct BandGauge: View, Animatable {
             zero.addLine(to: dial.point(centre, r * 1.24))
             layer.stroke(zero, with: .color(.primary), lineWidth: 2)
 
-            // Pointer at the exact value, pointing at the dial.
-            if hasValue {
-                let position = angle(of: value)
+            // Triangle pointing at the dial, at the value or at the requested value.
+            let pointerValue: Double? = switch pointer {
+            case .atValue: hasValue ? value : nil
+            case .atTarget: target
+            case .hidden: nil
+            }
+            if let pointerValue {
+                let position = angle(of: pointerValue)
                 var pointer = Path()
                 pointer.move(to: dial.point(position, r * 1.205))
                 pointer.addLine(to: dial.point(position - 1.5, r * 1.26))

@@ -6,8 +6,9 @@ App/SampleData/aava-n2k-3min.jsonl
   Signal K server project (https://github.com/SignalK/signalk-server), converted to
   Signal K deltas with canboatjs and n2k-signalk.
   Signal K server, canboatjs and n2k-signalk are licensed under the Apache License 2.0.
-  The values "steering.rudderAngle" (source "simulated.rudder") are not part of the
-  recording. They are simulated by Scripts/add-simulated-rudder.py.
+  The values "steering.rudderAngle" and "steering.rudderAngleTarget" (source
+  "simulated.rudder") are not part of the recording. They are simulated by
+  Scripts/add-simulated-rudder.py.
   The own "navigation.rateOfTurn" values (source "simulated.rateOfTurn") are not part of the
   recording either. They are calculated from the recorded heading by
   Scripts/add-simulated-rate-of-turn.py.

@@ -53,6 +53,10 @@ struct CompassView: View {
             .overlay {
                 let rudder = store.reading("steering.rudderAngle", now: context.date)
                 let degrees = (rudder?.sample.value.number ?? 0) * 180 / .pi
+                // The angle asked by the autopilot or steering system. Shown only while it is sent:
+                // in standby the autopilot stops sending, and an old request would mislead.
+                let request = store.reading("steering.rudderAngleTarget", now: context.date)
+                let requestNumber = request?.isLive == true ? request?.sample.value.number : nil
                 BandGauge(
                     placement: .bottom,
                     value: degrees,
@@ -60,10 +64,14 @@ struct CompassView: View {
                     isLive: rudder?.isLive == true,
                     // Most rudders stop near 35°.
                     scale: 35,
-                    label: rudder == nil ? "RUDDER ---" : Self.sideLabel("RUDDER", degrees, unit: "°")
+                    label: rudder == nil ? "RUDDER ---" : Self.sideLabel("RUDDER", degrees, unit: "°"),
+                    // Bar: actual rudder angle. Triangle: requested angle.
+                    pointer: requestNumber == nil ? .hidden : .atTarget,
+                    target: (requestNumber ?? 0) * 180 / .pi
                 )
                 // Values arrive a few times per second: animate between them so the bar moves smoothly.
                 .animation(.linear(duration: 0.2), value: rudder?.sample.value.number)
+                .animation(.linear(duration: 0.2), value: requestNumber)
             }
             .overlay {
                 let rateOfTurn = store.reading("navigation.rateOfTurn", now: context.date)
