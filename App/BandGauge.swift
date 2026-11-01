@@ -12,10 +12,10 @@ struct BandGauge: View, Animatable {
         case bottom
         /// Rate of turn. The value is written above the band.
         case top
-        /// Port engine, ahead up. The value is written outside the band, level with 0.
+        /// Port engine, ahead up. The value is written in a box outside the band, level with 0.
         /// Needs a canvas wider than the dial, so the text has room beside it.
         case left
-        /// Starboard engine, ahead up. The value is written outside the band, level with 0.
+        /// Starboard engine, ahead up. The value is written in a box outside the band, level with 0.
         case right
     }
 
@@ -24,6 +24,8 @@ struct BandGauge: View, Animatable {
     var value: Double
     let hasValue: Bool
     let isLive: Bool
+    /// Shown faint although live, for example an engine in neutral: it turns but does not drive.
+    var isDimmed = false
     /// Value at each end of the band.
     let scale: Double
     /// Text for the value, for example "RUDDER 21°". Can have several lines.
@@ -64,7 +66,7 @@ struct BandGauge: View, Animatable {
             let dial = DialGeometry(size: size)
             let r = dial.radius
             var layer = context
-            layer.opacity = hasValue && isLive ? 1 : 0.35
+            layer.opacity = hasValue && isLive && !isDimmed ? 1 : 0.35
 
             // Continuous bar from 0 to the value.
             if hasValue {
@@ -72,14 +74,14 @@ struct BandGauge: View, Animatable {
                 let bar = arc(dial, from: min(centre, end), to: max(centre, end), radius: r * 1.16)
                 let colors = colors ?? (palette.port, palette.starboard)
                 layer.stroke(bar, with: .color(value < 0 ? colors.negative : colors.positive),
-                             style: StrokeStyle(lineWidth: r * 0.08, lineCap: .butt))
+                             style: StrokeStyle(lineWidth: r * 0.03, lineCap: .butt))
             }
 
             // Scale ticks every tenth of the scale, drawn over the bar.
             var ticks = Path()
             for step in stride(from: -Self.span, through: Self.span, by: 3) where step != 0 {
-                ticks.move(to: dial.point(centre + step, r * 1.12))
-                ticks.addLine(to: dial.point(centre + step, r * 1.2))
+                ticks.move(to: dial.point(centre + step, r * 1.135))
+                ticks.addLine(to: dial.point(centre + step, r * 1.185))
             }
             layer.stroke(ticks, with: .color(.secondary.opacity(0.6)), lineWidth: 1)
             var zero = Path()
@@ -103,12 +105,16 @@ struct BandGauge: View, Animatable {
                 layer.fill(pointer, with: .color(.primary))
             }
 
+            let font = Font.system(size: r * 0.055, weight: .semibold, design: .monospaced)
+            let isSide = placement == .left || placement == .right
+            // The side boxes have room for the RPM only: there an old value is shown by the grey text alone.
+            let shown = isLive || !hasValue || isSide ? label : label + "  OLD"
             // One line at a time: a resolved text has no centre alignment for several lines.
-            let lines = (isLive || !hasValue ? label : label + "  OLD").split(separator: "\n").map {
+            let lines = shown.split(separator: "\n").map {
                 context.resolve(
-                    Text($0)
-                        .font(.system(size: r * 0.055, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(isLive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                    Self.spaced(String($0), gap: r * 0.012)
+                        .font(font)
+                        .foregroundStyle(isLive && !isDimmed ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 )
             }
             let lineHeight = r * 0.07
@@ -119,12 +125,26 @@ struct BandGauge: View, Animatable {
                 anchorPoint = dial.point(180, r * 1.32)
             case .top:
                 anchorPoint = dial.point(0, r * 1.32)
-            case .left:
-                anchorPoint = dial.point(270, r * 1.3)
-                anchor = .trailing
-            case .right:
-                anchorPoint = dial.point(90, r * 1.3)
-                anchor = .leading
+            case .left, .right:
+                // A box beside the 0 mark, wide enough for four digits and the thousands space,
+                // so it keeps its size when the RPM changes.
+                let digits = context.resolve(Self.spaced("8\u{202F}888", gap: r * 0.012).font(font))
+                    .measure(in: CGSize(width: r, height: r))
+                let size = CGSize(width: digits.width + r * 0.08, height: digits.height + r * 0.04)
+                let edge = dial.point(centre, r * 1.3)
+                let box = CGRect(x: placement == .left ? edge.x - size.width : edge.x, y: edge.y - size.height / 2,
+                                 width: size.width, height: size.height)
+                // The 0 mark runs on to the box.
+                var link = Path()
+                link.move(to: dial.point(centre, r * 1.24))
+                link.addLine(to: edge)
+                layer.stroke(link, with: .color(.primary), lineWidth: 2)
+                let shape = RoundedRectangle(cornerRadius: r * 0.025).path(in: box)
+                let fill: GraphicsContext.Shading = isNightVision ? .color(.black)
+                    : palette.background.map { .color($0) } ?? .style(.background)
+                context.fill(shape, with: fill)
+                context.stroke(shape, with: .color(isDimmed ? .secondary : .primary), lineWidth: 1.5)
+                anchorPoint = CGPoint(x: box.midX, y: box.midY)
             }
             for (index, line) in lines.enumerated() {
                 let offset = (CGFloat(index) - CGFloat(lines.count - 1) / 2) * lineHeight
@@ -133,6 +153,14 @@ struct BandGauge: View, Animatable {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// Text where a narrow space (thousands, as in "1 634") becomes a small gap after the digit before it.
+    /// In a monospaced font the space itself is almost as wide as a digit, too wide for "slight".
+    private static func spaced(_ text: String, gap: CGFloat) -> Text {
+        let parts = text.split(separator: "\u{202F}", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return Text(text) }
+        return Text(String(parts[0].dropLast())) + Text(String(parts[0].suffix(1))).kerning(gap) + Text(String(parts[1]))
     }
 
     /// Compass angle of the middle of the band.

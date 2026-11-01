@@ -166,6 +166,8 @@ struct CompassView: View {
             value: engine?.signedRPM ?? 0,
             hasValue: engine != nil,
             isLive: revolutions?.isLive == true,
+            // Unclutched (neutral): the engine turns but does not drive, so it is shown faint.
+            isDimmed: engine?.gear == .neutral,
             scale: maxRPM,
             label: engine?.text ?? "---",
             // Astern in orange, so it is never mistaken for ahead.

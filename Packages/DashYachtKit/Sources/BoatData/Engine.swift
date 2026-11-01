@@ -29,8 +29,11 @@ public struct EngineState: Equatable, Sendable {
         }
     }
 
-    /// RPM only, "1450". The band shows the gear: up ahead, down astern, no bar in neutral.
+    /// RPM only, with a narrow space between thousands: "1 450", "750". A narrow space, not a comma
+    /// or a point, which mean different things in different countries.
+    /// The band shows the gear: up ahead, down astern, no bar in neutral.
     public var text: String {
-        String(format: "%.0f", rpm)
+        let value = Int(rpm.rounded())
+        return value < 1000 ? "\(value)" : "\(value / 1000)\u{202F}" + String(format: "%03d", value % 1000)
     }
 }
