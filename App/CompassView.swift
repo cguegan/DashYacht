@@ -49,13 +49,33 @@ struct CompassView: View {
             }
             .overlay {
                 let rudder = store.reading("steering.rudderAngle", now: context.date)
-                RudderIndicator(
-                    angle: (rudder?.sample.value.number ?? 0) * 180 / .pi,
+                let degrees = (rudder?.sample.value.number ?? 0) * 180 / .pi
+                BandGauge(
+                    placement: .bottom,
+                    value: degrees,
                     hasValue: rudder?.sample.value.number != nil,
-                    isLive: rudder?.isLive == true
+                    isLive: rudder?.isLive == true,
+                    // Most rudders stop near 35°.
+                    scale: 35,
+                    label: rudder == nil ? "RUD ---" : Self.sideLabel("RUD", degrees, unit: "°")
                 )
                 // Values arrive a few times per second: animate between them so the bar moves smoothly.
                 .animation(.linear(duration: 0.2), value: rudder?.sample.value.number)
+            }
+            .overlay {
+                let rateOfTurn = store.reading("navigation.rateOfTurn", now: context.date)
+                // Signal K gives rad/s; helmsmen read degrees per minute.
+                let degreesPerMinute = (rateOfTurn?.sample.value.number ?? 0) * 180 / .pi * 60
+                BandGauge(
+                    placement: .top,
+                    value: degreesPerMinute,
+                    hasValue: rateOfTurn?.sample.value.number != nil,
+                    isLive: rateOfTurn?.isLive == true,
+                    // Yaw in waves reaches about 60°/min; faster turns stop at the end of the band.
+                    scale: 60,
+                    label: rateOfTurn == nil ? "ROT ---" : Self.sideLabel("ROT", degreesPerMinute, unit: "°/MIN")
+                )
+                .animation(.linear(duration: 0.2), value: rateOfTurn?.sample.value.number)
             }
             .overlay {
                 let scene = AISScene(store: store, now: context.date, rangeMetres: rangeNM * 1852)
@@ -94,6 +114,13 @@ struct CompassView: View {
     /// arrives (no pulsing in a steady turn) and never overshoots, which would show a wrong value.
     /// Longer is smoother but shows changes later.
     private static let motion = Animation.smooth(duration: 1.0)
+
+    /// "RUD 21° S", "ROT 4°/MIN P", or "RUD 0°" when it rounds to zero (no side then).
+    private static func sideLabel(_ name: String, _ value: Double, unit: String) -> String {
+        let rounded = Int(abs(value).rounded())
+        guard rounded > 0 else { return "\(name) 0\(unit)" }
+        return "\(name) \(rounded)\(unit) \(value < 0 ? "P" : "S")"
+    }
     private static let ranges: [Double] = [0.5, 1, 2, 4, 8, 16, 32]
 }
 
@@ -196,7 +223,7 @@ struct CompassDial: View, Animatable {
         context.stroke(minor, with: .color(.primary.opacity(0.7)), lineWidth: 1)
         context.stroke(major, with: .color(.primary), lineWidth: 2)
 
-        let labels = ["N", "3", "6", "E", "12", "15", "S", "21", "24", "W", "30", "33"]
+        let labels = ["N", "030", "060", "E", "120", "150", "S", "210", "240", "W", "300", "330"]
         for (index, label) in labels.enumerated() {
             let angle = Double(index * 30) - rotation
             let isCardinal = index % 3 == 0
@@ -279,7 +306,7 @@ struct CompassDial: View, Animatable {
         lubber.closeSubpath()
         context.fill(lubber, with: accent)
 
-        let box = CGRect(x: top.x - r * 0.24, y: top.y - r * 0.27, width: r * 0.48, height: r * 0.17)
+        let box = dial.headingBox
         context.stroke(Path(box), with: accent, lineWidth: 1.5)
 
         let value: String
@@ -318,6 +345,12 @@ struct DialGeometry {
     init(size: CGSize) {
         center = CGPoint(x: size.width / 2, y: size.height / 2 + min(size.width, size.height) * 0.03)
         radius = min(size.width, size.height) / 2 * 0.70
+    }
+
+    /// Heading value box, above the rate-of-turn band.
+    var headingBox: CGRect {
+        let top = point(0, radius)
+        return CGRect(x: top.x - radius * 0.24, y: top.y - radius * 0.48, width: radius * 0.48, height: radius * 0.17)
     }
 
     func point(_ angle: Double, _ r: CGFloat) -> CGPoint {
