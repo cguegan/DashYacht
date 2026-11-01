@@ -16,6 +16,8 @@ struct AISScene {
     var ownMotion: Motion?
     /// Radians, true. Screen up is the bow.
     var trueHeading: Double = 0
+    /// Live own position, also used for the shoreline. `nil` when missing or old.
+    var ownPosition: Coordinate?
     var rangeMetres: Double
 
     @MainActor
@@ -29,6 +31,7 @@ struct AISScene {
             unavailableReason = "AIS: NO OWN POSITION"
             return
         }
+        ownPosition = Coordinate(latitude: latitude, longitude: longitude)
         // AIS positions give true bearings, so the true heading is needed to place them around the bow.
         if let heading = store.reading("navigation.headingTrue", now: now), heading.isLive,
            let value = heading.sample.value.number {

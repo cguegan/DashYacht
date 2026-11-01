@@ -20,6 +20,12 @@ struct CompassView: View {
             let cogPaths = isMagnetic
                 ? ["navigation.courseOverGroundMagnetic", "navigation.courseOverGroundTrue"]
                 : ["navigation.courseOverGroundTrue", "navigation.courseOverGroundMagnetic"]
+            let scene = AISScene(store: store, now: context.date, rangeMetres: rangeNM * 1852)
+            // The card may turn with a magnetic heading; AIS and the shoreline need true. Add the difference
+            // (the variation), so they turn with the card, in the same animation.
+            let trueOffset = heading?.sample.value.number.map {
+                ContinuousAngle.nearest(to: 0, target: (scene.trueHeading - $0) * 180 / .pi)
+            } ?? 0
             CompassDial(
                 heading: heading,
                 rotation: cardRotation,
@@ -27,6 +33,11 @@ struct CompassView: View {
                 apparentWind: apparentWind,
                 windAngle: windAngle
             )
+            // Coast behind the dial. Needs the true heading too: without it, nothing is drawn.
+            .background {
+                ShorelineLayer(position: scene.unavailableReason == nil ? scene.ownPosition : nil,
+                               rangeMetres: rangeNM * 1852, rotation: cardRotation + trueOffset)
+            }
             // Headings arrive a few times per second: turn the card smoothly, the short way round.
             .onChange(of: heading?.sample.value.number, initial: true) { _, radians in
                 guard let radians else { return }
@@ -104,13 +115,7 @@ struct CompassView: View {
                 }
             }
             .overlay {
-                let scene = AISScene(store: store, now: context.date, rangeMetres: rangeNM * 1852)
-                // The card may turn with a magnetic heading; AIS needs true. Add the difference (the variation),
-                // so targets turn with the card, in the same animation.
-                let offset = heading?.sample.value.number.map {
-                    ContinuousAngle.nearest(to: 0, target: (scene.trueHeading - $0) * 180 / .pi)
-                } ?? 0
-                AISLayer(scene: scene, rotation: cardRotation + offset)
+                AISLayer(scene: scene, rotation: cardRotation + trueOffset)
             }
             .padding(24)
         }

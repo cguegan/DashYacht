@@ -19,3 +19,15 @@ App/SampleData/aava-n2k-3min.jsonl
   The first line (a Signal K hello message) declares the own vessel as MMSI 230035780.
   This is deduced from the data: that AIS target reports the same position as the own GPS,
   so it is the own transponder.
+
+App/Shoreline/shoreline.dysl
+  Coastline from GSHHG 2.3.7 (Global Self-consistent, Hierarchical, High-resolution
+  Geography Database) by Paul Wessel and Walter H. F. Smith,
+  https://www.soest.hawaii.edu/pwessel/gshhg/
+  GSHHG is distributed under the GNU Lesser General Public License version 3 or later.
+  Its copyright and permission notice is in App/Shoreline/GSHHG-LICENSE.txt, and the licence
+  texts are in App/Shoreline/COPYING.LESSERv3.txt and App/Shoreline/COPYINGv3.txt.
+  The file is converted from gshhs_f.b (full resolution) by Scripts/make-shoreline.py:
+  only the sea coast and the Antarctic ice front are kept, cut into 1° cells and
+  slightly simplified. The rest of DashYacht stays under the MIT licence.
+  The shoreline is for display only. It is not precise enough for navigation.
