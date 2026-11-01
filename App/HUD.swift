@@ -43,7 +43,7 @@ struct HUDPalette {
         } else {
             accent = .blue
             course = .purple
-            wind = .orange
+            wind = .yellow
             port = .red
             starboard = .green
             ais = Color(red: 0, green: 0.6, blue: 0)

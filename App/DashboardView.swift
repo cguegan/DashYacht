@@ -57,7 +57,7 @@ struct InstrumentColumn: View {
             }
         }
         .overlay(alignment: separatorEdge == .leading ? .leading : .trailing) {
-            HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision).separator
+            HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision).separator.opacity(0.5)
                 .frame(width: 0.5)
         }
     }
@@ -124,9 +124,9 @@ struct InstrumentCard: View {
         .padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            // Faint fill and half-transparent border: the cards stay quiet next to the compass.
+            // Faint fill and border: the cards stay quiet next to the compass.
             Self.shape.fill(.primary.opacity(0.05))
-            Self.shape.stroke(palette.cardBorder.opacity(0.5), lineWidth: 1)
+            Self.shape.stroke(palette.cardBorder.opacity(0.3), lineWidth: 1)
         }
     }
 
@@ -185,7 +185,7 @@ struct ValueReadout: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 2) {
             Text(text)
-                .font(.system(size: 36, weight: .medium).width(.condensed))
+                .font(.system(size: 44, weight: .medium).width(.condensed))
                 .tracking(1.5)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -205,16 +205,21 @@ struct PositionReadout: View {
     let lines: [String]
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: -2.5) {
+        // Two texts, so the lines can sit closer than one text allows. Each line shrinks on its own
+        // when the card is too narrow, so the shorter one is padded at the front with figure spaces
+        // (as wide as a digit): both then have the same length and shrink to the same size.
+        let length = lines.map(\.count).max() ?? 0
+        VStack(alignment: .trailing, spacing: -6) {
             ForEach(lines, id: \.self) { line in
-                Text(line)
-                    .font(.system(size: 29, weight: .medium).width(.condensed))
-                    .tracking(1.5)
+                Text(String(repeating: "\u{2007}", count: length - line.count) + line)
+                    .font(.system(size: 44, weight: .medium).width(.condensed))
+                    .tracking(0.5)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.4)
             }
         }
+        .padding(.vertical, 6)
     }
 }
 
