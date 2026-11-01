@@ -2,7 +2,9 @@
 """Add simulated engine data (two engines) to a Signal K replay file (one delta per line).
 
 The Aava sample recording has no engine data. This script adds, for "propulsion.port" and
-"propulsion.starboard", the revolutions (Hz) and the gear ("Forward", "Neutral", "Reverse").
+"propulsion.starboard", the revolutions (Hz), the gear ("Forward", "Neutral", "Reverse") and the
+position of the engine control lever as requested revolutions ("revolutionsTarget", Hz, negative
+astern; not a standard Signal K path). The lever moves at once; the engine follows it.
 Each minute: both engines ahead, port astern, both in neutral, both ahead, starboard astern,
 both in neutral. The gear changes only at idle, as on a real boat, and the RPM follows its
 target with a lag of about 1.5 s.
@@ -58,6 +60,13 @@ def target(t, engine):
     return gear, rpm + (15 * math.sin(2 * math.pi * t / 7 + engine) if gear != "Neutral" else 0)
 
 
+def lever(t, engine):
+    """Requested RPM from the lever of one engine at t seconds: the plan value, signed, 0 in neutral."""
+    phase = t % 60
+    gear, rpm = PLAN[max(i for i, step in enumerate(PLAN) if step[0] <= phase)][1 + engine]
+    return {"Forward": rpm, "Reverse": -rpm, "Neutral": 0}[gear]
+
+
 def main(path):
     lines = [line if line.endswith("\n") else line + "\n" for line in open(path) if line.strip()]
     kept = [(line, json.loads(line)) for line in lines]
@@ -80,6 +89,7 @@ def main(path):
             rpm[engine] = goal + (rpm[engine] - goal) * keep
             values.append({"path": f"propulsion.{name}.revolutions", "value": round(rpm[engine] / 60, 3)})
             values.append({"path": f"propulsion.{name}.transmission.gear", "value": gear})
+            values.append({"path": f"propulsion.{name}.revolutionsTarget", "value": round(lever(t, engine) / 60, 3)})
         output.append(json.dumps({"updates": [{
             "$source": SOURCE,
             "timestamp": next_time.isoformat(timespec="milliseconds").replace("+00:00", "Z"),

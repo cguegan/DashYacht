@@ -84,7 +84,9 @@ struct CompassView: View {
                     isLive: rateOfTurn?.isLive == true,
                     // Yaw in waves reaches about 60°/min; faster turns stop at the end of the band.
                     scale: 60,
-                    label: rateOfTurn == nil ? "ROT ---" : Self.sideLabel("ROT", degreesPerMinute, unit: "°/MIN")
+                    label: rateOfTurn == nil ? "ROT ---" : Self.sideLabel("ROT", degreesPerMinute, unit: "°/MIN"),
+                    // Nothing requests a rate of turn, so no triangle.
+                    pointer: .hidden
                 )
                 // Same 1 s spring as the compass card, so the band moves with the heading.
                 .animation(Self.motion, value: rateOfTurn?.sample.value.number)
@@ -151,24 +153,31 @@ struct CompassView: View {
     private static let motion = Animation.smooth(duration: 1.0)
 
     /// RPM band of one engine, from Signal K `propulsion.<id>`. Ahead up, astern down.
+    /// Bar: actual RPM. Triangle: RPM requested by the engine control lever.
     private func engineGauge(_ id: String, placement: BandGauge.Placement, now: Date) -> some View {
         let store = model.store
         let revolutions = store.reading("propulsion.\(id).revolutions", now: now)
         let gear = store.reading("propulsion.\(id).transmission.gear", now: now)
+        // Lever position as requested revolutions, Hz, negative astern. Not a standard Signal K path:
+        // the specification has no engine control lever. Shown only while it is sent.
+        let request = store.reading("propulsion.\(id).revolutionsTarget", now: now)
+        let requestHertz = request?.isLive == true ? request?.sample.value.number : nil
         let engine = EngineState(revolutions: revolutions?.sample.value, gear: gear?.sample.value)
         let palette = HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision)
-        let name = placement == .left ? "PORT" : "STBD"
         return BandGauge(
             placement: placement,
             value: engine?.signedRPM ?? 0,
             hasValue: engine != nil,
             isLive: revolutions?.isLive == true,
             scale: maxRPM,
-            label: "\(name)\n\(engine?.text ?? "---")",
+            label: engine?.text ?? "---",
             // Astern in orange, so it is never mistaken for ahead.
-            colors: (negative: isNightVision ? palette.accent : .orange, positive: palette.accent)
+            colors: (negative: isNightVision ? palette.accent : .orange, positive: palette.accent),
+            pointer: requestHertz == nil ? .hidden : .atTarget,
+            target: (requestHertz ?? 0) * 60
         )
         .animation(Self.motion, value: engine?.signedRPM)
+        .animation(Self.motion, value: requestHertz)
     }
 
     /// "RUDDER 21° S", "ROT 04°/MIN P", or "RUDDER 00°  " at zero. Always the same length (the font is

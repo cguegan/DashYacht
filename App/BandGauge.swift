@@ -26,7 +26,7 @@ struct BandGauge: View, Animatable {
     let isLive: Bool
     /// Value at each end of the band.
     let scale: Double
-    /// Text for the value, for example "RUDDER 21° S". Can have two lines.
+    /// Text for the value, for example "RUDDER 21° S". Can have several lines.
     let label: String
     /// Bar colours below and above 0. `nil` uses port and starboard colours.
     var colors: (negative: Color, positive: Color)? = nil
