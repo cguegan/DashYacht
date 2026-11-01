@@ -125,21 +125,10 @@ struct CompassView: View {
                 .help("Data Source (⌘O)")
             }
         }
-        .overlay(alignment: .bottomLeading) {
-            Picker("Range", selection: $rangeNM) {
-                ForEach(Self.ranges, id: \.self) { range in
-                    Text("\(range.formatted()) NM").tag(range)
-                }
-            }
-            .pickerStyle(.menu)
-            .fixedSize()
-            .font(.system(.caption, design: .monospaced))
-            .padding(12)
-            .help("AIS range: radius of the outer ring")
-        }
     }
 
-    @AppStorage("ais.rangeNM") private var rangeNM = 4.0
+    /// Chosen with the range buttons at the bottom of the left panel.
+    @AppStorage(RangeButtons.storageKey) private var rangeNM = 4.0
     /// Card rotation in degrees. Not limited to 0–360°, so the animation never turns the long way.
     @State private var cardRotation = 0.0
     @State private var hasRotation = false
@@ -172,7 +161,8 @@ struct CompassView: View {
             scale: maxRPM,
             label: engine?.text ?? "---",
             // Astern in orange, so it is never mistaken for ahead.
-            colors: (negative: isNightVision ? palette.accent : .orange, positive: palette.accent),
+            // Ahead in green; night vision makes both the text colour, so the direction tells them apart.
+            colors: (negative: isNightVision ? palette.starboard : .orange, positive: palette.starboard),
             pointer: requestHertz == nil ? .hidden : .atTarget,
             target: (requestHertz ?? 0) * 60
         )
@@ -185,7 +175,37 @@ struct CompassView: View {
     private static func sideLabel(_ name: String, _ value: Double, unit: String) -> String {
         "\(name) \(String(format: "%02d", Int(abs(value).rounded())))\(unit)"
     }
-    private static let ranges: [Double] = [0.5, 1, 2, 4, 8, 16, 32]
+}
+
+/// AIS range buttons (radius of the outer ring), at the bottom of the left panel. The chosen one is highlighted.
+struct RangeButtons: View {
+    static let storageKey = "ais.rangeNM"
+    private static let ranges: [Double] = [2, 4, 8, 16, 32]
+
+    @AppStorage(storageKey) private var rangeNM = 4.0
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(Self.ranges, id: \.self) { range in
+                Button {
+                    rangeNM = range
+                } label: {
+                    Text(range.formatted())
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .foregroundStyle(rangeNM == range ? .primary : .secondary)
+                        .background(rangeNM == range ? AnyShapeStyle(.secondary.opacity(0.25)) : AnyShapeStyle(.clear),
+                                    in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.6), lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("AIS range \(range.formatted()) NM: radius of the outer ring")
+                .accessibilityLabel("Range \(range.formatted()) nautical miles")
+                .accessibilityAddTraits(rangeNM == range ? .isSelected : [])
+            }
+        }
+    }
 }
 
 struct CompassDial: View, Animatable {
@@ -367,7 +387,8 @@ struct CompassDial: View, Animatable {
         let fill: GraphicsContext.Shading = isNightVision ? .color(.black)
             : palette.background.map { .color($0) } ?? .style(.background)
         context.fill(Path(box), with: fill)
-        context.stroke(Path(box), with: accent, lineWidth: 1.5)
+        // Text colour: black in light mode, and still visible on the dark backgrounds.
+        context.stroke(Path(box), with: .color(.primary), lineWidth: 1.5)
 
         let value: String
         if let heading, let number = heading.sample.value.number {

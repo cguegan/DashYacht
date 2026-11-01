@@ -14,12 +14,12 @@ struct DashboardView: View {
         GeometryReader { geometry in
             let side = geometry.size.width * 0.16
             HStack(spacing: 0) {
-                InstrumentColumn(cards: $layout.left, separatorEdge: .trailing)
+                InstrumentColumn(cards: $layout.left, separatorEdge: .trailing, footer: .range)
                     .frame(width: side)
                 CompassView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(GridBackground())
-                InstrumentColumn(cards: $layout.right, separatorEdge: .leading, showsAppearanceButtons: true)
+                InstrumentColumn(cards: $layout.right, separatorEdge: .leading, footer: .appearance)
                     .frame(width: side)
             }
         }
@@ -33,8 +33,9 @@ struct InstrumentColumn: View {
     @Binding var cards: [CardSettings]
     /// Side of the column that faces the compass.
     let separatorEdge: HorizontalEdge
-    /// Shows the light, dark and night buttons at the bottom of the column.
-    var showsAppearanceButtons = false
+    enum Footer { case range, appearance }
+    /// Buttons at the bottom of the column: AIS range on the left, light/dark/night on the right.
+    let footer: Footer
     @Environment(\.isNightVision) private var isNightVision
     @Environment(\.colorScheme) private var colorScheme
 
@@ -51,10 +52,13 @@ struct InstrumentColumn: View {
                     .padding(14)
                 }
                 // The scroll view takes the free height, so the buttons stay at the bottom.
-                if showsAppearanceButtons {
-                    AppearanceButtons()
-                        .padding([.horizontal, .bottom], 14)
+                Group {
+                    switch footer {
+                    case .range: RangeButtons()
+                    case .appearance: AppearanceButtons()
+                    }
                 }
+                .padding([.horizontal, .bottom], 14)
             }
         }
         .overlay(alignment: separatorEdge == .leading ? .leading : .trailing) {
