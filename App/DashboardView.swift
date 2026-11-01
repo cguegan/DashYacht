@@ -19,7 +19,7 @@ struct DashboardView: View {
                 CompassView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(GridBackground())
-                InstrumentColumn(cards: $layout.right, separatorEdge: .leading)
+                InstrumentColumn(cards: $layout.right, separatorEdge: .leading, showsAppearanceButtons: true)
                     .frame(width: side)
             }
         }
@@ -33,19 +33,27 @@ struct InstrumentColumn: View {
     @Binding var cards: [CardSettings]
     /// Side of the column that faces the compass.
     let separatorEdge: HorizontalEdge
+    /// Shows the light, dark and night buttons above the cards.
+    var showsAppearanceButtons = false
     @Environment(\.isNightVision) private var isNightVision
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         // Redraw every second even without new data, so values turn stale on time.
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            ScrollView {
-                VStack(spacing: 13.5) {
-                    ForEach($cards) { $card in
-                        InstrumentCard(settings: $card, reading: reading(for: card, now: context.date))
-                    }
+            VStack(spacing: 0) {
+                if showsAppearanceButtons {
+                    AppearanceButtons()
+                        .padding([.horizontal, .top], 14)
                 }
-                .padding(14)
+                ScrollView {
+                    VStack(spacing: 13.5) {
+                        ForEach($cards) { $card in
+                            InstrumentCard(settings: $card, reading: reading(for: card, now: context.date))
+                        }
+                    }
+                    .padding(14)
+                }
             }
         }
         .overlay(alignment: separatorEdge == .leading ? .leading : .trailing) {

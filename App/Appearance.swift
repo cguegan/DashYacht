@@ -79,3 +79,32 @@ struct AppearancePicker: View {
         }
     }
 }
+
+/// Light, dark and night vision buttons, at the top of the right panel. The selected one is highlighted.
+/// "System" is only in the View menu: when it is chosen, no button is highlighted.
+struct AppearanceButtons: View {
+    @AppStorage(AppearanceMode.storageKey) private var mode: AppearanceMode = .system
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach([AppearanceMode.light, .dark, .night]) { choice in
+                Button {
+                    mode = choice
+                } label: {
+                    Image(systemName: choice.symbol)
+                        .font(.system(size: 14))
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .foregroundStyle(mode == choice ? .primary : .secondary)
+                        .background(mode == choice ? AnyShapeStyle(.secondary.opacity(0.25)) : AnyShapeStyle(.clear),
+                                    in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.6), lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(choice.title)
+                .accessibilityLabel(choice.title)
+                .accessibilityAddTraits(mode == choice ? .isSelected : [])
+            }
+        }
+    }
+}
