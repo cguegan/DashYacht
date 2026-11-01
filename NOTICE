@@ -1,0 +1,8 @@
+DashYacht
+Copyright (c) 2026 Christophe Guegan. MIT licence (see LICENSE).
+
+App/SampleData/aava-n2k-3min.jsonl
+  The first 3 minutes of the NMEA 2000 sample recording "aava-n2k.data" from the
+  Signal K server project (https://github.com/SignalK/signalk-server), converted to
+  Signal K deltas with canboatjs and n2k-signalk.
+  Signal K server, canboatjs and n2k-signalk are licensed under the Apache License 2.0.

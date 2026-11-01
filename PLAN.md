@@ -87,6 +87,8 @@ Rules:
 - One fixed dashboard: SOG, COG, heading, depth, apparent/true wind, position, water temperature, battery voltage.
 - Replay source for development without a boat.
 - **Done when:** app shows live data from OpenPlotter on the boat and from a replay file, and greys out values when the feed stops.
+- **Status (2026-11-01):** implemented. Tested: Signal K client against a local Signal K server (sample data), replay of the real NMEA 2000 sample through the data store, staleness, units. Not yet tested: OpenPlotter on the boat, automatic reconnection with a real server restart, Bonjour discovery on a real network.
+- **Moved to phase 2:** limit the UI refresh rate; source priority when two devices send the same path (last value wins for now).
 
 ### Phase 2 – Beautiful widgets and layouts (≈4 weeks)
 - Widgets: large digital value, analogue gauge, compass rose, wind instrument (apparent + true, close-hauled sectors), depth with alarm, history graph (Swift Charts), position/lat-lon.
