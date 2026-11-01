@@ -12,6 +12,7 @@ struct CompassView: View {
             let store = model.store
             let heading = store.reading(["navigation.headingTrue", "navigation.headingMagnetic"], now: context.date)
             // Use the same reference as the heading, so true and magnetic are not mixed.
+            let apparentWind = store.reading("environment.wind.angleApparent", now: context.date)
             let isMagnetic = heading?.path.hasSuffix("Magnetic") == true
             let cogPaths = isMagnetic
                 ? ["navigation.courseOverGroundMagnetic", "navigation.courseOverGroundTrue"]
@@ -20,17 +21,30 @@ struct CompassView: View {
                 heading: heading,
                 rotation: cardRotation,
                 course: store.reading(cogPaths, now: context.date),
-                apparentWind: store.reading("environment.wind.angleApparent", now: context.date)
+                apparentWind: apparentWind,
+                windAngle: windAngle
             )
             // Headings arrive a few times per second: turn the card smoothly, the short way round.
             .onChange(of: heading?.sample.value.number, initial: true) { _, radians in
                 guard let radians else { return }
                 let target = ContinuousAngle.nearest(to: cardRotation, target: radians * 180 / .pi)
                 if hasRotation {
-                    withAnimation(.linear(duration: 0.25)) { cardRotation = target }
+                    withAnimation(Self.motion) { cardRotation = target }
                 } else {
                     cardRotation = target
                     hasRotation = true
+                }
+            }
+            // Apparent wind changes all the time: the pointer follows smoothly, the short way round
+            // (through dead downwind, not round the bow).
+            .onChange(of: apparentWind?.sample.value.number, initial: true) { _, radians in
+                guard let radians else { return }
+                let target = ContinuousAngle.nearest(to: windAngle, target: radians * 180 / .pi)
+                if hasWind {
+                    withAnimation(Self.motion) { windAngle = target }
+                } else {
+                    windAngle = target
+                    hasWind = true
                 }
             }
             .overlay {
@@ -72,6 +86,14 @@ struct CompassView: View {
     /// Card rotation in degrees. Not limited to 0–360°, so the animation never turns the long way.
     @State private var cardRotation = 0.0
     @State private var hasRotation = false
+    /// Apparent wind angle in degrees, continuous like `cardRotation`.
+    @State private var windAngle = 0.0
+    @State private var hasWind = false
+
+    /// Spring without bounce for the card and the wind pointer: it keeps its speed when a new value
+    /// arrives (no pulsing in a steady turn) and never overshoots, which would show a wrong value.
+    /// Longer is smoother but shows changes later.
+    private static let motion = Animation.smooth(duration: 1.0)
     private static let ranges: [Double] = [0.5, 1, 2, 4, 8, 16, 32]
 }
 
@@ -81,10 +103,15 @@ struct CompassDial: View, Animatable {
     var rotation: Double
     let course: Reading?
     let apparentWind: Reading?
+    /// Degrees from the bow, animated. Follows the apparent wind, the short way round.
+    var windAngle: Double
 
-    nonisolated var animatableData: Double {
-        get { rotation }
-        set { rotation = newValue }
+    nonisolated var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(rotation, windAngle) }
+        set {
+            rotation = newValue.first
+            windAngle = newValue.second
+        }
     }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -109,10 +136,10 @@ struct CompassDial: View, Animatable {
                 layer.opacity = course?.isLive == true && headingLive ? 1 : 0.3
                 drawCourse(layer, dial, angle: courseDegrees - headingDegrees, color: palette.course)
             }
-            if let windDegrees = degrees(apparentWind) {
+            if apparentWind?.sample.value.number != nil {
                 var layer = context
                 layer.opacity = apparentWind?.isLive == true ? 1 : 0.3
-                drawWind(layer, dial, angle: windDegrees, color: palette.wind)
+                drawWind(layer, dial, angle: windAngle, color: palette.wind)
             }
 
             drawBoat(context, dial)
