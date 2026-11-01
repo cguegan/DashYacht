@@ -67,7 +67,7 @@ extension View {
     }
 }
 
-/// The appearance choice, for the toolbar and the View menu.
+/// The appearance choice, for the View menu.
 struct AppearancePicker: View {
     @AppStorage(AppearanceMode.storageKey) private var mode: AppearanceMode = .system
 
@@ -77,19 +77,5 @@ struct AppearancePicker: View {
                 Label(mode.title, systemImage: mode.symbol).tag(mode)
             }
         }
-    }
-}
-
-/// Toolbar button that opens the appearance choice.
-struct AppearanceMenu: View {
-    @AppStorage(AppearanceMode.storageKey) private var mode: AppearanceMode = .system
-
-    var body: some View {
-        Menu {
-            AppearancePicker().pickerStyle(.inline)
-        } label: {
-            Label("Appearance", systemImage: mode.symbol)
-        }
-        .help("Appearance: \(mode.title)")
     }
 }

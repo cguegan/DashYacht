@@ -25,6 +25,8 @@ final class AppModel {
     let layout = DashboardLayout()
     private(set) var source: DataSourceChoice?
     private(set) var status: SourceStatus?
+    /// Shows the data source sheet. Set by the File menu and by a click on the status.
+    var showsSourceSheet = false
     private var task: Task<Void, Never>?
 
     static let sampleURL = Bundle.main.url(forResource: "aava-n2k-3min", withExtension: "jsonl")

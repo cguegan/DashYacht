@@ -3,11 +3,9 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.isNightVision) private var isNightVision
-    @AppStorage(AppearanceMode.storageKey) private var appearance: AppearanceMode = .system
-    @State private var showSourceSheet = false
 
     var body: some View {
+        @Bindable var model = model
         Group {
             if model.source == nil {
                 ContentUnavailableView {
@@ -15,7 +13,7 @@ struct ContentView: View {
                 } description: {
                     Text("Connect to a Signal K server, or play the sample data.")
                 } actions: {
-                    Button("Choose Data Source…") { showSourceSheet = true }
+                    Button("Choose Data Source…") { model.showsSourceSheet = true }
                         .buttonStyle(.borderedProminent)
                     Button("Play Sample Data") { model.start(.sample) }
                 }
@@ -24,52 +22,14 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 480)
-        // Night vision hides the toolbar (too bright). The connection status must stay visible,
-        // so it moves into the window, and a click on it opens the data source.
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if isNightVision {
-                HStack {
-                    if let source = model.source {
-                        Button { showSourceSheet = true } label: {
-                            StatusView(source: source, status: model.status)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Data Source")
-                    } else {
-                        Spacer()
-                    }
-                    // The toolbar is hidden in night vision, so this is the visible way back.
-                    Button("Reset Colours", systemImage: "arrow.uturn.backward") { appearance = .system }
-                        .help("Go back to the System appearance")
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            }
-        }
-        .toolbar(isNightVision ? .hidden : .visible, for: .windowToolbar)
-        .navigationTitle(isNightVision ? "" : "DashYacht")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                if let source = model.source {
-                    StatusView(source: source, status: model.status)
-                }
-            }
-            ToolbarItem {
-                AppearanceMenu()
-            }
-            ToolbarItem {
-                Button("Data Source", systemImage: "antenna.radiowaves.left.and.right") { showSourceSheet = true }
-            }
-        }
-        .sheet(isPresented: $showSourceSheet) {
+        .sheet(isPresented: $model.showsSourceSheet) {
             SourceSheet()
                 .appAppearance()
         }
     }
 }
 
-/// Connection state in the toolbar. Red or orange means the numbers on screen may be old.
+/// Connection state, in the top-left corner of the compass. Red or orange means the numbers on screen may be old.
 struct StatusView: View {
     let source: DataSourceChoice
     let status: SourceStatus?

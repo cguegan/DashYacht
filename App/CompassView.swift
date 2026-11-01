@@ -5,6 +5,9 @@ import SwiftUI
 /// Heading-up compass: the card turns so the boat heading is always at the top.
 struct CompassView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isNightVision) private var isNightVision
+    @AppStorage(EngineSettings.maxRPMKey) private var maxRPM = EngineSettings.defaultMaxRPM
 
     var body: some View {
         // Redraw every second even without new data, so the dial turns stale on time.
@@ -57,7 +60,7 @@ struct CompassView: View {
                     isLive: rudder?.isLive == true,
                     // Most rudders stop near 35°.
                     scale: 35,
-                    label: rudder == nil ? "RUD ---" : Self.sideLabel("RUD", degrees, unit: "°")
+                    label: rudder == nil ? "RUDDER ---" : Self.sideLabel("RUDDER", degrees, unit: "°")
                 )
                 // Values arrive a few times per second: animate between them so the bar moves smoothly.
                 .animation(.linear(duration: 0.2), value: rudder?.sample.value.number)
@@ -79,6 +82,18 @@ struct CompassView: View {
                 .animation(Self.motion, value: rateOfTurn?.sample.value.number)
             }
             .overlay {
+                // Wider than the dial, so the RPM text fits beside each band. Same height and centre,
+                // so the dial geometry is the same.
+                GeometryReader { geometry in
+                    ZStack {
+                        engineGauge("port", placement: .left, now: context.date)
+                        engineGauge("starboard", placement: .right, now: context.date)
+                    }
+                    .frame(width: geometry.size.width * 1.5, height: geometry.size.height)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                }
+            }
+            .overlay {
                 let scene = AISScene(store: store, now: context.date, rangeMetres: rangeNM * 1852)
                 // The card may turn with a magnetic heading; AIS needs true. Add the difference (the variation),
                 // so targets turn with the card, in the same animation.
@@ -88,6 +103,17 @@ struct CompassView: View {
                 AISLayer(scene: scene, rotation: cardRotation + offset)
             }
             .padding(24)
+        }
+        // The window has no title bar, so the connection status is here. A click opens the data source.
+        .overlay(alignment: .topLeading) {
+            if let source = model.source {
+                Button { model.showsSourceSheet = true } label: {
+                    StatusView(source: source, status: model.status)
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+                .help("Data Source (⌘O)")
+            }
         }
         .overlay(alignment: .bottomLeading) {
             Picker("Range", selection: $rangeNM) {
@@ -116,11 +142,33 @@ struct CompassView: View {
     /// Longer is smoother but shows changes later.
     private static let motion = Animation.smooth(duration: 1.0)
 
-    /// "RUD 21° S", "ROT 4°/MIN P", or "RUD 0°" when it rounds to zero (no side then).
+    /// RPM band of one engine, from Signal K `propulsion.<id>`. Ahead up, astern down.
+    private func engineGauge(_ id: String, placement: BandGauge.Placement, now: Date) -> some View {
+        let store = model.store
+        let revolutions = store.reading("propulsion.\(id).revolutions", now: now)
+        let gear = store.reading("propulsion.\(id).transmission.gear", now: now)
+        let engine = EngineState(revolutions: revolutions?.sample.value, gear: gear?.sample.value)
+        let palette = HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision)
+        let name = placement == .left ? "PORT" : "STBD"
+        return BandGauge(
+            placement: placement,
+            value: engine?.signedRPM ?? 0,
+            hasValue: engine != nil,
+            isLive: revolutions?.isLive == true,
+            scale: maxRPM,
+            label: "\(name)\n\(engine?.text ?? "---")",
+            // Astern in orange, so it is never mistaken for ahead.
+            colors: (negative: isNightVision ? palette.accent : .orange, positive: palette.accent)
+        )
+        .animation(Self.motion, value: engine?.signedRPM)
+    }
+
+    /// "RUDDER 21° S", "ROT 04°/MIN P", or "RUDDER 00°  " at zero. Always the same length (the font is
+    /// monospaced), so the centred text does not jump when the value changes.
     private static func sideLabel(_ name: String, _ value: Double, unit: String) -> String {
         let rounded = Int(abs(value).rounded())
-        guard rounded > 0 else { return "\(name) 0\(unit)" }
-        return "\(name) \(rounded)\(unit) \(value < 0 ? "P" : "S")"
+        let side = rounded == 0 ? " " : value < 0 ? "P" : "S"
+        return "\(name) \(String(format: "%02d", rounded))\(unit) \(side)"
     }
     private static let ranges: [Double] = [0.5, 1, 2, 4, 8, 16, 32]
 }
@@ -187,15 +235,7 @@ struct CompassDial: View, Animatable {
     /// Fixed decoration around the dial.
     private func drawFrame(_ context: GraphicsContext, _ dial: DialGeometry, _ palette: HUDPalette) {
         let r = dial.radius
-        let accent = GraphicsContext.Shading.color(palette.accent)
 
-        // Thick brackets on both sides.
-        for (start, end) in [(55.0, 125.0), (235.0, 305.0)] {
-            context.stroke(dial.arc(from: start, to: end, radius: r * 1.12), with: accent,
-                           style: StrokeStyle(lineWidth: 4, lineCap: .butt))
-            context.stroke(dial.arc(from: start - 12, to: end + 12, radius: r * 1.18), with: .color(.secondary),
-                           lineWidth: 0.75)
-        }
         // Inner dashed circle and dotted cross line, as on an aircraft navigation display.
         context.stroke(Path(ellipseIn: CGRect(x: dial.center.x - r / 2, y: dial.center.y - r / 2, width: r, height: r)),
                        with: .color(.secondary), style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
@@ -308,6 +348,10 @@ struct CompassDial: View, Animatable {
         context.fill(lubber, with: accent)
 
         let box = dial.headingBox
+        // Filled, so the course line and wind pointer under it do not cross the digits.
+        let fill: GraphicsContext.Shading = isNightVision ? .color(.black)
+            : palette.background.map { .color($0) } ?? .style(.background)
+        context.fill(Path(box), with: fill)
         context.stroke(Path(box), with: accent, lineWidth: 1.5)
 
         let value: String
@@ -328,7 +372,11 @@ struct CompassDial: View, Animatable {
                 .font(.system(size: r * 0.05, weight: .semibold, design: .monospaced))
                 .foregroundStyle(heading?.isLive == true ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
         )
-        context.draw(label, at: CGPoint(x: box.minX - r * 0.04, y: box.midY), anchor: .trailing)
+        let labelSize = label.measure(in: CGSize(width: r, height: r))
+        let labelRect = CGRect(x: box.midX - labelSize.width / 2 - 3, y: box.maxY + r * 0.02,
+                               width: labelSize.width + 6, height: labelSize.height)
+        context.fill(Path(labelRect), with: fill)
+        context.draw(label, in: labelRect.insetBy(dx: 3, dy: 0))
     }
 
     private var accessibilityText: String {
@@ -348,10 +396,9 @@ struct DialGeometry {
         radius = min(size.width, size.height) / 2 * 0.70
     }
 
-    /// Heading value box, above the rate-of-turn band.
+    /// Heading value box, in the centre of the dial just below the boat.
     var headingBox: CGRect {
-        let top = point(0, radius)
-        return CGRect(x: top.x - radius * 0.24, y: top.y - radius * 0.48, width: radius * 0.48, height: radius * 0.17)
+        CGRect(x: center.x - radius * 0.24, y: center.y + radius * 0.14, width: radius * 0.48, height: radius * 0.17)
     }
 
     func point(_ angle: Double, _ r: CGFloat) -> CGPoint {

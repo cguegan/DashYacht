@@ -23,7 +23,8 @@ struct DashboardView: View {
                     .frame(width: side)
             }
         }
-        .background(HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision).background)
+        // Also under the window buttons, where the hidden title bar was.
+        .background(HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision).background.ignoresSafeArea())
     }
 }
 
