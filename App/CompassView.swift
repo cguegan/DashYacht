@@ -294,16 +294,26 @@ struct CompassDial: View, Animatable {
         context.stroke(Path(ellipseIn: CGRect(x: dial.center.x - r, y: dial.center.y - r, width: r * 2, height: r * 2)),
                        with: .color(.primary), lineWidth: 2)
 
+        // Every degree: short and faint, so the 5°, 10° and 30° marks stay easy to read.
+        var fine = Path()
         var minor = Path()
         var major = Path()
-        for bearing in stride(from: 0, to: 360, by: 5) {
+        for bearing in 0..<360 {
             let angle = Double(bearing) - rotation
-            let length: CGFloat = bearing % 30 == 0 ? 0.09 : bearing % 10 == 0 ? 0.06 : 0.035
-            var path = bearing % 30 == 0 ? major : minor
-            path.move(to: dial.point(angle, r))
-            path.addLine(to: dial.point(angle, r * (1 - length)))
-            if bearing % 30 == 0 { major = path } else { minor = path }
+            let length: CGFloat = bearing % 30 == 0 ? 0.09 : bearing % 10 == 0 ? 0.06 : bearing % 5 == 0 ? 0.035 : 0.02
+            let inner = dial.point(angle, r * (1 - length)), outer = dial.point(angle, r)
+            if bearing % 30 == 0 {
+                major.move(to: outer)
+                major.addLine(to: inner)
+            } else if bearing % 5 == 0 {
+                minor.move(to: outer)
+                minor.addLine(to: inner)
+            } else {
+                fine.move(to: outer)
+                fine.addLine(to: inner)
+            }
         }
+        context.stroke(fine, with: .color(.primary.opacity(0.45)), lineWidth: 0.75)
         context.stroke(minor, with: .color(.primary.opacity(0.7)), lineWidth: 1)
         context.stroke(major, with: .color(.primary), lineWidth: 2)
 
@@ -435,20 +445,42 @@ struct HeadingBox: View {
     let heading: Reading?
 
     var body: some View {
-        // Frosted glass: what is under the box (coast, course line, AIS targets) is blurred, so the digits
-        // stay readable but the picture is not cut. A Canvas cannot blur, so the material is a view behind it.
+        // Glass: what is under the box (coast, course line, AIS targets) is blurred, so the digits stay
+        // readable but the picture is not cut. A Canvas cannot blur, so the glass is a view behind it.
         GeometryReader { geometry in
             let box = DialGeometry(size: geometry.size).headingBox
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                // The thinnest material is still too opaque here: partly transparent, it lets the picture through.
-                .opacity(0.65)
+            glass
                 .frame(width: box.width, height: box.height)
                 .position(x: box.midX, y: box.midY)
         }
         .overlay { digits }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// Liquid Glass from macOS 26; before, a frosted material, partly transparent because even the
+    /// thinnest one is too opaque here.
+    @ViewBuilder private var glass: some View {
+        // Xcode before 26 (Swift 6.2) does not know glassEffect, so it builds only the fallback.
+        #if compiler(>=6.2)
+        if #available(macOS 26, iOS 26, *) {
+            Rectangle()
+                .fill(.clear)
+                .glassEffect(.regular, in: Rectangle())
+                // Partly transparent, so the AIS targets behind still show, frosted.
+                .opacity(0.7)
+        } else {
+            frosted
+        }
+        #else
+        frosted
+        #endif
+    }
+
+    private var frosted: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .opacity(0.65)
     }
 
     private var digits: some View {
