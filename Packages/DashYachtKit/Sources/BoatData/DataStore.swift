@@ -33,10 +33,16 @@ public final class DataStore {
     /// A value without update for longer than this is stale. Instruments on a boat
     /// normally send at 1 Hz or faster, so 5 s means something is wrong.
     public static let defaultMaxAge: TimeInterval = 5
+    /// AIS class B sends a position only every 30 s (3 min when slow), so AIS targets age slower.
+    public static let aisStaleAge: TimeInterval = 180
+    /// AIS targets without a report for this time are no longer shown.
+    public static let aisLostAge: TimeInterval = 600
 
     public private(set) var samples: [String: Sample] = [:]
     /// Context of the own vessel, from the server hello message.
     public private(set) var selfContext: String?
+    /// Values of other vessels (AIS), by context. Kept apart, so they never replace own values.
+    public private(set) var otherVessels: [String: [String: Sample]] = [:]
 
     public init() {}
 
@@ -45,11 +51,28 @@ public final class DataStore {
         case .hello(let selfContext):
             self.selfContext = selfContext
         case .delta(let delta):
-            guard isSelf(delta.context) else { return }
-            for update in delta.updates {
-                for item in update.values where !item.path.isEmpty {
-                    samples[item.path] = Sample(value: item.value, sourceRef: update.sourceRef, receivedAt: receivedAt)
+            if isSelf(delta.context) {
+                for update in delta.updates {
+                    for item in update.values where !item.path.isEmpty {
+                        samples[item.path] = Sample(value: item.value, sourceRef: update.sourceRef, receivedAt: receivedAt)
+                    }
                 }
+            } else if let context = delta.context, context.hasPrefix("vessels.") {
+                var vessel = otherVessels[context] ?? [:]
+                for update in delta.updates {
+                    for item in update.values {
+                        let sample = Sample(value: item.value, sourceRef: update.sourceRef, receivedAt: receivedAt)
+                        if item.path.isEmpty {
+                            // Static data such as the name comes as an object on the empty path.
+                            if let name = item.value["name"] {
+                                vessel["name"] = Sample(value: name, sourceRef: update.sourceRef, receivedAt: receivedAt)
+                            }
+                        } else {
+                            vessel[item.path] = sample
+                        }
+                    }
+                }
+                otherVessels[context] = vessel
             }
         }
     }
@@ -58,6 +81,7 @@ public final class DataStore {
     public func reset() {
         samples = [:]
         selfContext = nil
+        otherVessels = [:]
     }
 
     /// Returns the first of `paths` that has a live value. If none is live, returns the most
@@ -75,6 +99,26 @@ public final class DataStore {
 
     public func reading(_ path: String, now: Date, maxAge: TimeInterval = defaultMaxAge) -> Reading? {
         reading([path], now: now, maxAge: maxAge)
+    }
+
+    /// AIS targets with a position received less than `aisLostAge` ago.
+    public func aisTargets(now: Date) -> [AISTarget] {
+        otherVessels.compactMap { context, values -> AISTarget? in
+            guard let position = values["navigation.position"],
+                  let latitude = position.value["latitude"]?.number,
+                  let longitude = position.value["longitude"]?.number else { return nil }
+            let age = now.timeIntervalSince(position.receivedAt)
+            guard age <= Self.aisLostAge else { return nil }
+            return AISTarget(
+                id: context,
+                name: values["name"]?.value.string,
+                position: Coordinate(latitude: latitude, longitude: longitude),
+                speed: values["navigation.speedOverGround"]?.value.number,
+                course: values["navigation.courseOverGroundTrue"]?.value.number,
+                age: max(0, age)
+            )
+        }
+        .sorted { $0.id < $1.id }
     }
 
     private func isSelf(_ context: String?) -> Bool {

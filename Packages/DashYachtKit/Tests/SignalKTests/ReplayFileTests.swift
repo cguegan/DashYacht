@@ -31,6 +31,15 @@ struct ReplayFileTests {
         #expect(file.skippedLines == 1)
     }
 
+    @Test("A hello line gives the own vessel, so its AIS transponder is not a target")
+    func helloLine() {
+        let hello = #"{"name":"replay","version":"1","self":"vessels.urn:mrn:imo:mmsi:230035780"}"#
+        let file = ReplayFile(data: Data([hello, line("2024-01-01T10:00:00Z")].joined(separator: "\n").utf8))
+        #expect(file.selfContext == "vessels.urn:mrn:imo:mmsi:230035780")
+        #expect(file.entries.count == 1)
+        #expect(file.skippedLines == 0)
+    }
+
     @Test("The sample file shipped with the app is a valid replay")
     func bundledSample() throws {
         let url = URL(filePath: #filePath)

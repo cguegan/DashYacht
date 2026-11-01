@@ -13,6 +13,7 @@ struct SampleReplayTests {
         let file = ReplayFile(data: try Data(contentsOf: url))
         let store = DataStore()
         let t0 = Date(timeIntervalSince1970: 0)
+        store.apply(.hello(selfContext: file.selfContext), receivedAt: t0)
         for entry in file.entries {
             store.apply(.delta(entry.delta), receivedAt: t0.addingTimeInterval(Double(entry.offset.components.seconds)))
         }
@@ -34,6 +35,16 @@ struct SampleReplayTests {
         #expect(value("navigation.headingTrue") != nil)
         #expect(value("navigation.courseOverGroundTrue") != nil)
         #expect(value("environment.wind.angleApparent") != nil)
+
+        // AIS: many ships around, but not the own transponder (declared by the hello line).
+        let targets = store.aisTargets(now: end)
+        #expect(targets.count > 20)
+        #expect(!targets.contains { $0.mmsi == "230035780" })
+
+        // Simulated by Scripts/add-simulated-rudder.py, within the ±35° scale of the indicator.
+        let rudder = try #require(store.reading("steering.rudderAngle", now: end))
+        #expect(rudder.sample.sourceRef == "simulated.rudder")
+        #expect(abs(rudder.sample.value.number ?? 99) <= 35 * .pi / 180)
 
         // The sample contains AIS targets. The own position must stay near the Aava in the Gulf of Finland.
         let position = try #require(store.reading("navigation.position", now: end)?.sample.value)

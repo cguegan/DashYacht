@@ -3,6 +3,8 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.isNightVision) private var isNightVision
+    @AppStorage(AppearanceMode.storageKey) private var appearance: AppearanceMode = .system
     @State private var showSourceSheet = false
 
     var body: some View {
@@ -21,7 +23,32 @@ struct ContentView: View {
                 DashboardView()
             }
         }
-        .frame(minWidth: 520, minHeight: 360)
+        .frame(minWidth: 760, minHeight: 480)
+        // Night vision hides the toolbar (too bright). The connection status must stay visible,
+        // so it moves into the window, and a click on it opens the data source.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if isNightVision {
+                HStack {
+                    if let source = model.source {
+                        Button { showSourceSheet = true } label: {
+                            StatusView(source: source, status: model.status)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Data Source")
+                    } else {
+                        Spacer()
+                    }
+                    // The toolbar is hidden in night vision, so this is the visible way back.
+                    Button("Reset Colours", systemImage: "arrow.uturn.backward") { appearance = .system }
+                        .help("Go back to the System appearance")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+        }
+        .toolbar(isNightVision ? .hidden : .visible, for: .windowToolbar)
+        .navigationTitle(isNightVision ? "" : "DashYacht")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 if let source = model.source {
@@ -29,11 +56,15 @@ struct ContentView: View {
                 }
             }
             ToolbarItem {
+                AppearanceMenu()
+            }
+            ToolbarItem {
                 Button("Data Source", systemImage: "antenna.radiowaves.left.and.right") { showSourceSheet = true }
             }
         }
         .sheet(isPresented: $showSourceSheet) {
             SourceSheet()
+                .appAppearance()
         }
     }
 }
@@ -42,6 +73,7 @@ struct ContentView: View {
 struct StatusView: View {
     let source: DataSourceChoice
     let status: SourceStatus?
+    @Environment(\.isNightVision) private var isNightVision
 
     var body: some View {
         HStack(spacing: 6) {
@@ -55,7 +87,8 @@ struct StatusView: View {
 
     private var color: Color {
         switch status {
-        case .connected: .green
+        // In night vision green turns black, so "connected" uses a dim dot and problems a bright one.
+        case .connected: isNightVision ? .secondary : .green
         case .connecting, nil: .orange
         case .disconnected, .failed: .red
         }

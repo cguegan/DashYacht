@@ -19,9 +19,12 @@ struct InstrumentSpec: Identifiable, Sendable {
 }
 
 extension InstrumentSpec {
-    /// Phase 1: one fixed page. Editable dashboards come in phase 2.
-    static let defaultPage: [InstrumentSpec] = [
+    /// Fixed for now. Editable dashboards come in phase 2.
+    static let leftPanel: [InstrumentSpec] = [
         InstrumentSpec(title: "SOG", paths: ["navigation.speedOverGround"]) { reading in
+            reading.sample.value.number.map { .init(value: Format.knots($0), unit: "kn") }
+        },
+        InstrumentSpec(title: "STW", paths: ["navigation.speedThroughWater"]) { reading in
             reading.sample.value.number.map { .init(value: Format.knots($0), unit: "kn") }
         },
         InstrumentSpec(title: "COG", paths: ["navigation.courseOverGroundTrue", "navigation.courseOverGroundMagnetic"]) { reading in
@@ -34,9 +37,6 @@ extension InstrumentSpec {
                 .init(value: Format.bearing($0) + "°", unit: reading.path.hasSuffix("Magnetic") ? "M" : "T")
             }
         },
-        InstrumentSpec(title: "STW", paths: ["navigation.speedThroughWater"]) { reading in
-            reading.sample.value.number.map { .init(value: Format.knots($0), unit: "kn") }
-        },
         InstrumentSpec(title: "Depth", paths: [
             "environment.depth.belowKeel", "environment.depth.belowTransducer", "environment.depth.belowSurface",
         ]) { reading in
@@ -44,6 +44,14 @@ extension InstrumentSpec {
                 .init(value: Format.metres($0), unit: "m", detail: depthReference(reading.path))
             }
         },
+        InstrumentSpec(title: "Position", paths: ["navigation.position"]) { reading in
+            guard let lat = reading.sample.value["latitude"]?.number,
+                  let lon = reading.sample.value["longitude"]?.number else { return nil }
+            return .init(value: Format.latitude(lat) + "\n" + Format.longitude(lon), unit: "")
+        },
+    ]
+
+    static let rightPanel: [InstrumentSpec] = [
         InstrumentSpec(title: "AWA", paths: ["environment.wind.angleApparent"]) { reading in
             reading.sample.value.number.map(windAngle)
         },
@@ -64,11 +72,6 @@ extension InstrumentSpec {
                 .init(value: Format.volts($0), unit: "V", detail: "Battery " + reading.path.split(separator: ".")[2])
             }
         },
-        InstrumentSpec(title: "Position", paths: ["navigation.position"]) { reading in
-            guard let lat = reading.sample.value["latitude"]?.number,
-                  let lon = reading.sample.value["longitude"]?.number else { return nil }
-            return .init(value: Format.latitude(lat) + "\n" + Format.longitude(lon), unit: "")
-        },
     ]
 
     private static func windAngle(_ radians: Double) -> Display {
@@ -87,19 +90,39 @@ extension InstrumentSpec {
     }
 }
 
+/// Three columns: instrument cards on each side, compass in the centre.
 struct DashboardView: View {
+    var body: some View {
+        // Fixed proportions: 16% cards, 68% compass, 16% cards.
+        GeometryReader { geometry in
+            let side = geometry.size.width * 0.16
+            HStack(spacing: 0) {
+                InstrumentColumn(specs: InstrumentSpec.leftPanel)
+                    .frame(width: side)
+                CompassView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                InstrumentColumn(specs: InstrumentSpec.rightPanel)
+                    .frame(width: side)
+            }
+        }
+        .background(GridBackground())
+    }
+}
+
+struct InstrumentColumn: View {
     @Environment(AppModel.self) private var model
+    let specs: [InstrumentSpec]
 
     var body: some View {
         // Redraw every second even without new data, so values turn stale on time.
         TimelineView(.periodic(from: .now, by: 1)) { context in
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    ForEach(InstrumentSpec.defaultPage) { spec in
+                VStack(spacing: 12) {
+                    ForEach(specs) { spec in
                         InstrumentTile(spec: spec, reading: model.store.reading(spec.paths, now: context.date))
                     }
                 }
-                .padding(16)
+                .padding(12)
             }
         }
     }
@@ -108,46 +131,64 @@ struct DashboardView: View {
 struct InstrumentTile: View {
     let spec: InstrumentSpec
     let reading: Reading?
+    @Environment(\.isNightVision) private var isNightVision
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let display = reading.flatMap(spec.display)
         let isLive = reading?.isLive == true && display != nil
+        let palette = HUDPalette(colorScheme: colorScheme, isNightVision: isNightVision)
 
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(spec.title).font(.headline).foregroundStyle(.secondary)
+                Text(spec.title.uppercased())
+                    .font(.system(.caption, design: .monospaced, weight: .semibold))
+                    .tracking(2)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 if let status = statusText {
-                    Text(status).font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                    Text(status)
+                        .font(.system(.caption2, design: .monospaced, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(.trailing, 10)
                 }
             }
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(display?.value ?? "—")
-                    .font(.system(size: isMultiline(display) ? 26 : 48, weight: .medium, design: .rounded))
+                    .font(.system(size: isMultiline(display) ? 24 : 46, weight: .light))
                     .monospacedDigit()
                     .lineLimit(2)
                     .minimumScaleFactor(0.5)
                 if let display, !display.unit.isEmpty {
-                    Text(display.unit)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(isLive ? (display.unitColor ?? .secondary) : .secondary)
+                    Text(display.unit.uppercased())
+                        .font(.system(.callout, design: .monospaced, weight: .medium))
+                        .foregroundStyle(isLive && !isNightVision ? (display.unitColor ?? .secondary) : .secondary)
                 }
             }
             .foregroundStyle(isLive ? .primary : .tertiary)
-            Text(display?.detail ?? " ")
-                .font(.caption).foregroundStyle(.secondary)
+            Text((display?.detail ?? " ").uppercased())
+                .font(.system(.caption2, design: .monospaced))
+                .tracking(1)
+                .foregroundStyle(.secondary)
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+        .background {
+            ChamferedRectangle()
+                .fill(.background.secondary.opacity(0.7))
+            ChamferedRectangle()
+                .stroke(.secondary.opacity(0.6), lineWidth: 1)
+            CornerMark()
+                .fill(isLive ? palette.accent : .orange)
+        }
         .accessibilityElement(children: .combine)
     }
 
     private var statusText: String? {
-        guard let reading else { return "No data" }
+        guard let reading else { return "NO DATA" }
         if case .stale(let age) = reading.freshness {
-            return age < 120 ? "Old: \(Int(age)) s" : "Old: \(Int(age / 60)) min"
+            return age < 120 ? "OLD \(Int(age))S" : "OLD \(Int(age / 60))MIN"
         }
         return nil
     }

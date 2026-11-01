@@ -9,6 +9,9 @@ public struct ReplayFile: Sendable {
     }
 
     public var entries: [Entry]
+    /// Own vessel context, from a hello message line in the file (optional).
+    /// Without it, the own AIS transponder in a recording shows as another vessel.
+    public var selfContext: String?
     /// Lines that are not valid deltas. They are skipped.
     public var skippedLines: Int
 
@@ -17,9 +20,17 @@ public struct ReplayFile: Sendable {
         var skipped = 0
         var start: Date?
         var last: Duration = .zero
+        var selfContext: String?
 
         for line in data.split(separator: UInt8(ascii: "\n")) where !line.allSatisfy({ $0 == 32 || $0 == 13 }) {
-            guard case .delta(let delta)? = Message.decode(Data(line)) else {
+            let delta: Delta
+            switch Message.decode(Data(line)) {
+            case .delta(let value)?:
+                delta = value
+            case .hello(let context)?:
+                selfContext = context
+                continue
+            case nil:
                 skipped += 1
                 continue
             }
@@ -34,6 +45,7 @@ public struct ReplayFile: Sendable {
         }
         self.entries = entries
         self.skippedLines = skipped
+        self.selfContext = selfContext
     }
 }
 
@@ -57,6 +69,7 @@ public enum ReplaySource {
                     return
                 }
                 continuation.yield(.status(.connected))
+                continuation.yield(.message(.hello(selfContext: file.selfContext)))
 
                 let clock = ContinuousClock()
                 while !Task.isCancelled {

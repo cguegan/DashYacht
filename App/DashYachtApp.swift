@@ -8,6 +8,12 @@ struct DashYachtApp: App {
         WindowGroup {
             ContentView()
                 .environment(model)
+                .appAppearance()
+        }
+        .commands {
+            CommandGroup(after: .toolbar) {
+                AppearancePicker()
+            }
         }
     }
 }
